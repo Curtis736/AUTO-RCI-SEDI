@@ -1,0 +1,11 @@
+{
+	"LT": "LT2500726",
+	"form": "F565 A",
+	"out_file_category": "PV",
+	"generator_out_filename": "**REF_SEDI**_SN**SN**_PV",
+	"file_reaction_mode": "remplacer",
+	"num_plan": null,
+	"TITREPLAN": "Titre du Plan",
+	"pdf_input_path": "X:/Tracabilite/RETA-TASDDM-712-23.004B/LT2500794/PV",
+	"pdf_necessary": null
+}

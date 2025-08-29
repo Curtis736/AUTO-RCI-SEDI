@@ -1,0 +1,256 @@
+>> [MSG] Module win32timezone chargé pour Excel
+>> [MSG] Module win32timezone chargé pour ValueFetcher
+>> [MSG] ValueCollector initialisé avec les valeurs par défaut
+>> [MSG] Instance globale de ValueCollector initialisée
+>> [WARN] Le fichier de config theme était déjà chargé, possible que des valeurs soient écrasées
+>> [WARN] Le fichier de config paths était déjà chargé, possible que des valeurs soient écrasées
+>> [WARN] Le fichier de config fields était déjà chargé, possible que des valeurs soient écrasées
+>> [MSG] LT extrait du chemin : LT2500726
+>> [MSG] ValueCollector initialisé avec les valeurs par défaut
+>> [MSG] 
+=== BIENVENUE DANS AUTO_RCI SIMPLIFIÉ ===
+>> [MSG] Version du 26/03/2024
+>> [MSG] 
+Modifications récentes:
+>> [MSG] 1. Amélioration de la gestion des répertoires de sortie
+>> [MSG] 2. Les documents sont maintenant générés même si le chemin de sortie n'existe pas
+>> [MSG] 3. Correction du problème de création de documents dans les dossiers cibles
+>> [MSG] 4. Les champs 'numéro de lancement (LT)' et 'numéro de plan' sont désormais préremplis avec des valeurs par défaut
+>> [MSG] 5. Simplification de l'interface en supprimant les onglets non essentiels
+>> [MSG] 6. Meilleure gestion des erreurs lors de la génération des documents
+>> [MSG] 
+Pour toute question ou signalement de bug, veuillez contacter le support technique.
+>> [MSG] =============================================
+
+>> [MSG] Ouverture de l'onglet par défaut...
+>> [MSG] Initialisation terminée. Application prête à l'utilisation.
+>> [MSG] 
+=== DOSSIER DE SORTIE DES DOCUMENTS ===
+>> [MSG] Les documents seront générés dans le dossier :
+>> [MSG] X:\Tracabilite\RCSPE-QUANT25.085\LT2500726\PV
+>> [MSG] ==========================================
+
+>> [MSG] Option choisie : Génération de tous les SN du LT LT2500726
+>> [MSG] 
+=== LECTURE DU FICHIER EXCEL ===
+>> [MSG] Fichier Excel: X:/Tracabilite/RCSPE-QUANT25.085/mesures RCSPE-QUANT25.085.xlsx
+>> [MSG] [DEBUG] Chemin utilisé pour ouvrir le fichier Excel : X:/Tracabilite/RCSPE-QUANT25.085/mesures RCSPE-QUANT25.085.xlsx
+>> [MSG] [DEBUG] Fichier existe ? True
+>> [MSG] ===========================
+
+>> [MSG] Instance Excel créée avec succès dans ValueFetcher
+>> [MSG] [DEBUG] Tentative d'ouverture du fichier Excel avec win32com : X:/Tracabilite/RCSPE-QUANT25.085/mesures RCSPE-QUANT25.085.xlsx
+>> [MSG] [DEBUG] Ouverture du fichier Excel réussie !
+>> [MSG] Feuilles trouvées dans le classeur: titre 24.207
+>> [MSG] Utilisation de l'ordre original des feuilles Excel
+>> [MSG] Utilisation de la seule feuille disponible: titre 24.207
+>> [MSG] Nombre de tableaux trouvés dans la feuille: 1
+>> [MSG] Lecture des 10 colonnes du tableau...
+>> [MSG] Nombre de lignes trouvées dans le tableau: 2
+>> [MSG] Traitement de la colonne 1: Lancement**LT** (tag: LT)
+>> [MSG] Valeurs trouvées pour LT: 2 entrées
+>> [MSG] Traitement de la colonne 2: REF ARTICLE
+**REF_SEDI** (tag: REF_SEDI)
+>> [MSG] Valeurs trouvées pour REF_SEDI: 2 entrées
+>> [MSG] Traitement de la colonne 3: N° de S/N**SN** (tag: SN)
+>> [MSG] Valeurs trouvées pour SN: 2 entrées
+>> [MSG] Traitement de la colonne 4: Longueur
+Totale
+**LEN_TOT** (tag: LEN_TOT)
+>> [MSG] Valeurs trouvées pour LEN_TOT: 2 entrées
+>> [MSG] Traitement de la colonne 5: Spec longueur
+**LEN_SPEC** (tag: LEN_SPEC)
+>> [MSG] Valeurs trouvées pour LEN_SPEC: 2 entrées
+>> [MSG] Traitement de la colonne 6: Fourreau 1 diamètre 2,5 **FOURREAU1_D2.5** (tag: FOURREAU1_D2.5)
+>> [MSG] Valeurs trouvées pour FOURREAU1_D2.5: 2 entrées
+>> [MSG] Traitement de la colonne 7: Fourreau 1 diamètre 2,1 **FOURREAU1_D2.1** (tag: FOURREAU1_D2.1)
+>> [MSG] Valeurs trouvées pour FOURREAU1_D2.1: 2 entrées
+>> [MSG] Traitement de la colonne 8: Fourreau 2 diamètre 2,5 **FOURREAU2_D2.5** (tag: FOURREAU2_D2.5)
+>> [MSG] Valeurs trouvées pour FOURREAU2_D2.5: 2 entrées
+>> [MSG] Traitement de la colonne 9: Fourreau 2 diamètre 2,1 **FOURREAU2_D2.1** (tag: FOURREAU2_D2.1)
+>> [MSG] Valeurs trouvées pour FOURREAU2_D2.1: 2 entrées
+>> [MSG] Traitement de la colonne 10: Longueur dépassement fibre
+**LEN_FIBRE** (tag: LEN_FIBRE)
+>> [MSG] Valeurs trouvées pour LEN_FIBRE: 2 entrées
+>> [MSG] 
+=== RÉSUMÉ DES TAGS TROUVÉS ===
+>> [MSG] Nombre total de tags trouvés: 10
+>> [MSG] - FOURREAU1_D2.1: 2 valeurs
+>> [MSG] - FOURREAU1_D2.5: 2 valeurs
+>> [MSG] - FOURREAU2_D2.1: 2 valeurs
+>> [MSG] - FOURREAU2_D2.5: 2 valeurs
+>> [MSG] - LEN_FIBRE: 2 valeurs
+>> [MSG] - LEN_SPEC: 2 valeurs
+>> [MSG] - LEN_TOT: 2 valeurs
+>> [MSG] - LT: 2 valeurs
+>> [MSG] - REF_SEDI: 2 valeurs
+>> [MSG] - SN: 2 valeurs
+>> [MSG] =============================
+
+>> [MSG] Nombre de lignes valides trouvées: 2
+>> [MSG] Création des containers dans l'ordre original du fichier Excel
+>> [MSG] Valeur manquante pour **NUMPLAN** dans SN25S35001
+>> [MSG] Container créé pour SN25S35001 avec 12 valeurs
+>> [MSG] Valeur manquante pour **NUMPLAN** dans SN25S35002
+>> [MSG] Container créé pour SN25S35002 avec 12 valeurs
+>> [MSG] Application Excel fermée dans ValueFetcher
+>> [MSG] Conservation de l'ordre original des données du fichier Excel
+>> [MSG] Comparaison filtrage : container_lt_clean='LT2500726' (len=9) vs launch_number_clean='LT2500726' (len=9)
+>> [MSG] Comparaison filtrage : container_lt_clean='LT2500726' (len=9) vs launch_number_clean='LT2500726' (len=9)
+>> [MSG] SN trouvés pour LT2500726 : 25S35001, 25S35002
+>> [MSG] Génération automatique des documents pour 2 SN du LT LT2500726
+>> [MSG] Génération des documents pour les SNs (2) : 25S35001, 25S35002
+>> [MSG] Vérification du répertoire de sortie : X:\Tracabilite\RCSPE-QUANT25.085\LT2500726\PV
+>> [MSG] Le répertoire existe déjà: X:\Tracabilite\RCSPE-QUANT25.085\LT2500726\PV
+>> [MSG] n'a pas trouvé le numéro du formulaire
+>> [MSG] 
+=== LECTURE COMPLÈTE DU FICHIER EXCEL ===
+>> [MSG] Lecture de toutes les valeurs du fichier Excel: X:/Tracabilite/RCSPE-QUANT25.085/mesures RCSPE-QUANT25.085.xlsx
+>> [MSG] 
+=== LECTURE DU FICHIER EXCEL ===
+>> [MSG] Fichier Excel: X:/Tracabilite/RCSPE-QUANT25.085/mesures RCSPE-QUANT25.085.xlsx
+>> [MSG] [DEBUG] Chemin utilisé pour ouvrir le fichier Excel : X:/Tracabilite/RCSPE-QUANT25.085/mesures RCSPE-QUANT25.085.xlsx
+>> [MSG] [DEBUG] Fichier existe ? True
+>> [MSG] ===========================
+
+>> [MSG] Instance Excel créée avec succès dans ValueFetcher
+>> [MSG] [DEBUG] Tentative d'ouverture du fichier Excel avec win32com : X:/Tracabilite/RCSPE-QUANT25.085/mesures RCSPE-QUANT25.085.xlsx
+>> [MSG] [DEBUG] Ouverture du fichier Excel réussie !
+>> [MSG] Feuilles trouvées dans le classeur: titre 24.207
+>> [MSG] Utilisation de l'ordre original des feuilles Excel
+>> [MSG] Utilisation de la seule feuille disponible: titre 24.207
+>> [MSG] Nombre de tableaux trouvés dans la feuille: 1
+>> [MSG] Lecture des 10 colonnes du tableau...
+>> [MSG] Nombre de lignes trouvées dans le tableau: 2
+>> [MSG] Traitement de la colonne 1: Lancement**LT** (tag: LT)
+>> [MSG] Valeurs trouvées pour LT: 2 entrées
+>> [MSG] Traitement de la colonne 2: REF ARTICLE
+**REF_SEDI** (tag: REF_SEDI)
+>> [MSG] Valeurs trouvées pour REF_SEDI: 2 entrées
+>> [MSG] Traitement de la colonne 3: N° de S/N**SN** (tag: SN)
+>> [MSG] Valeurs trouvées pour SN: 2 entrées
+>> [MSG] Traitement de la colonne 4: Longueur
+Totale
+**LEN_TOT** (tag: LEN_TOT)
+>> [MSG] Valeurs trouvées pour LEN_TOT: 2 entrées
+>> [MSG] Traitement de la colonne 5: Spec longueur
+**LEN_SPEC** (tag: LEN_SPEC)
+>> [MSG] Valeurs trouvées pour LEN_SPEC: 2 entrées
+>> [MSG] Traitement de la colonne 6: Fourreau 1 diamètre 2,5 **FOURREAU1_D2.5** (tag: FOURREAU1_D2.5)
+>> [MSG] Valeurs trouvées pour FOURREAU1_D2.5: 2 entrées
+>> [MSG] Traitement de la colonne 7: Fourreau 1 diamètre 2,1 **FOURREAU1_D2.1** (tag: FOURREAU1_D2.1)
+>> [MSG] Valeurs trouvées pour FOURREAU1_D2.1: 2 entrées
+>> [MSG] Traitement de la colonne 8: Fourreau 2 diamètre 2,5 **FOURREAU2_D2.5** (tag: FOURREAU2_D2.5)
+>> [MSG] Valeurs trouvées pour FOURREAU2_D2.5: 2 entrées
+>> [MSG] Traitement de la colonne 9: Fourreau 2 diamètre 2,1 **FOURREAU2_D2.1** (tag: FOURREAU2_D2.1)
+>> [MSG] Valeurs trouvées pour FOURREAU2_D2.1: 2 entrées
+>> [MSG] Traitement de la colonne 10: Longueur dépassement fibre
+**LEN_FIBRE** (tag: LEN_FIBRE)
+>> [MSG] Valeurs trouvées pour LEN_FIBRE: 2 entrées
+>> [MSG] 
+=== RÉSUMÉ DES TAGS TROUVÉS ===
+>> [MSG] Nombre total de tags trouvés: 10
+>> [MSG] - FOURREAU1_D2.1: 2 valeurs
+>> [MSG] - FOURREAU1_D2.5: 2 valeurs
+>> [MSG] - FOURREAU2_D2.1: 2 valeurs
+>> [MSG] - FOURREAU2_D2.5: 2 valeurs
+>> [MSG] - LEN_FIBRE: 2 valeurs
+>> [MSG] - LEN_SPEC: 2 valeurs
+>> [MSG] - LEN_TOT: 2 valeurs
+>> [MSG] - LT: 2 valeurs
+>> [MSG] - REF_SEDI: 2 valeurs
+>> [MSG] - SN: 2 valeurs
+>> [MSG] =============================
+
+>> [MSG] Nombre de lignes valides trouvées: 2
+>> [MSG] Création des containers dans l'ordre original du fichier Excel
+>> [MSG] Valeur manquante pour **NUMPLAN** dans SN25S35001
+>> [MSG] Container créé pour SN25S35001 avec 12 valeurs
+>> [MSG] Valeur manquante pour **NUMPLAN** dans SN25S35002
+>> [MSG] Container créé pour SN25S35002 avec 12 valeurs
+>> [MSG] Application Excel fermée dans ValueFetcher
+>> [MSG] Conservation de l'ordre original des données du fichier Excel
+>> [MSG] Lecture du fichier Excel réussie. 2 SN trouvés.
+>> [MSG] =====================================
+
+>> [MSG] Génération du document pour les SNs sélectionnés : 25S35001, 25S35002
+>> [MSG] Chaque document contiendra les versions E et SE du même SN
+>> [MSG] ------- DEBUT FICHE SN25S35001 -------
+
+>> [MSG] Ouverture du document Word: X:/Tracabilite/RCSPE-QUANT25.085/F565-Ind A-Fiche mesure cordons Quantel.docx
+>> [MSG] 
+=== TRAITEMENT DES TAGS D'IMAGES PERSONNALISÉS ===
+>> [MSG] Recherche de tags d'images personnalisés pour SN25S35001
+>> [MSG] === FIN DU TRAITEMENT DES TAGS PERSONNALISÉS ===
+
+>> [MSG] Recherche de tags d'images personnalisés...
+>> [MSG] Traitement du tag personnalisé §§FACES_DEPASSANTES§§
+>> [MSG] Recherche d'images pour SN25S35001 dans X:\Tracabilite\RCSPE-QUANT25.085\LT2500726\FACES_DEPASSANTES
+>> [MSG] Image correspondant à SN25S35001 trouvée: SN25S35001.png
+>> [MSG] Remplacement du tag FACES_DEPASSANTES par 1 image(s)
+>> [MSG] Traitement du tag personnalisé §§FACES_NON_DEPASSANTES§§
+>> [MSG] Recherche d'images pour SN25S35001 dans X:\Tracabilite\RCSPE-QUANT25.085\LT2500726\FACES_NON_DEPASSANTES
+>> [MSG] Image correspondant à SN25S35001 trouvée: SN25S35001.pdf
+>> [MSG] Remplacement du tag FACES_NON_DEPASSANTES par 1 image(s)
+>> [MSG] Tags personnalisés traités : FACES_DEPASSANTES, FACES_NON_DEPASSANTES
+>> [MSG] Utilisation du remplaceur de tags amélioré pour garantir que tous les tags soient remplacés
+>> [MSG] Le répertoire existe déjà: X:\Tracabilite\RCSPE-QUANT25.085\LT2500726\PV
+>> [MSG] SAUVEGARDE - Tentative de sauvegarde du document à: X:\Tracabilite\RCSPE-QUANT25.085\LT2500726\PV\RCSPE-QUANT25.085_SN25S35001_PV.docx
+>> [MSG] SAUVEGARDE - Le répertoire existe déjà: X:\Tracabilite\RCSPE-QUANT25.085\LT2500726\PV
+>> [MSG] SAUVEGARDE - Le répertoire X:\Tracabilite\RCSPE-QUANT25.085\LT2500726\PV est accessible en écriture
+>> [MSG] SAUVEGARDE - Tentative de sauvegarde avec docx.Document.save()
+>> [MSG] SAUVEGARDE - Document sauvegardé avec succès: X:\Tracabilite\RCSPE-QUANT25.085\LT2500726\PV\RCSPE-QUANT25.085_SN25S35001_PV.docx
+>> [MSG] SAUVEGARDE - Vérification réussie: le fichier X:\Tracabilite\RCSPE-QUANT25.085\LT2500726\PV\RCSPE-QUANT25.085_SN25S35001_PV.docx existe
+>> [MSG] Document fermé avec succès
+>> [MSG] fichier RCSPE-QUANT25.085_SN25S35001_PV.docx traité avec succès
+>> [MSG] Fichier généré : X:\Tracabilite\RCSPE-QUANT25.085\LT2500726\PV\RCSPE-QUANT25.085_SN25S35001_PV.docx
+>> [MSG] contient des images pour : 
+>> [MSG] ------- FIN FICHE SN25S35001 -------
+
+>> [MSG] ------- DEBUT FICHE SN25S35002 -------
+
+>> [MSG] Ouverture du document Word: X:/Tracabilite/RCSPE-QUANT25.085/F565-Ind A-Fiche mesure cordons Quantel.docx
+>> [MSG] 
+=== TRAITEMENT DES TAGS D'IMAGES PERSONNALISÉS ===
+>> [MSG] Recherche de tags d'images personnalisés pour SN25S35002
+>> [MSG] === FIN DU TRAITEMENT DES TAGS PERSONNALISÉS ===
+
+>> [MSG] Recherche de tags d'images personnalisés...
+>> [MSG] Traitement du tag personnalisé §§FACES_DEPASSANTES§§
+>> [MSG] Recherche d'images pour SN25S35002 dans X:\Tracabilite\RCSPE-QUANT25.085\LT2500726\FACES_DEPASSANTES
+>> [MSG] Image correspondant à SN25S35002 trouvée: SN25S35002.png
+>> [MSG] Remplacement du tag FACES_DEPASSANTES par 1 image(s)
+>> [MSG] Traitement du tag personnalisé §§FACES_NON_DEPASSANTES§§
+>> [MSG] Recherche d'images pour SN25S35002 dans X:\Tracabilite\RCSPE-QUANT25.085\LT2500726\FACES_NON_DEPASSANTES
+>> [MSG] Image correspondant à SN25S35002 trouvée: SN25S35002.pdf
+>> [MSG] Remplacement du tag FACES_NON_DEPASSANTES par 1 image(s)
+>> [MSG] Tags personnalisés traités : FACES_DEPASSANTES, FACES_NON_DEPASSANTES
+>> [MSG] Utilisation du remplaceur de tags amélioré pour garantir que tous les tags soient remplacés
+>> [MSG] Le répertoire existe déjà: X:\Tracabilite\RCSPE-QUANT25.085\LT2500726\PV
+>> [MSG] SAUVEGARDE - Tentative de sauvegarde du document à: X:\Tracabilite\RCSPE-QUANT25.085\LT2500726\PV\RCSPE-QUANT25.085_SN25S35002_PV.docx
+>> [MSG] SAUVEGARDE - Le répertoire existe déjà: X:\Tracabilite\RCSPE-QUANT25.085\LT2500726\PV
+>> [MSG] SAUVEGARDE - Le répertoire X:\Tracabilite\RCSPE-QUANT25.085\LT2500726\PV est accessible en écriture
+>> [MSG] SAUVEGARDE - Tentative de sauvegarde avec docx.Document.save()
+>> [MSG] SAUVEGARDE - Document sauvegardé avec succès: X:\Tracabilite\RCSPE-QUANT25.085\LT2500726\PV\RCSPE-QUANT25.085_SN25S35002_PV.docx
+>> [MSG] SAUVEGARDE - Vérification réussie: le fichier X:\Tracabilite\RCSPE-QUANT25.085\LT2500726\PV\RCSPE-QUANT25.085_SN25S35002_PV.docx existe
+>> [MSG] Document fermé avec succès
+>> [MSG] fichier RCSPE-QUANT25.085_SN25S35002_PV.docx traité avec succès
+>> [MSG] Fichier généré : X:\Tracabilite\RCSPE-QUANT25.085\LT2500726\PV\RCSPE-QUANT25.085_SN25S35002_PV.docx
+>> [MSG] contient des images pour : 
+>> [MSG] ------- FIN FICHE SN25S35002 -------
+
+>> [MSG] 
+=== RÉSUMÉ DES FICHIERS GÉNÉRÉS ===
+>> [MSG] - RCSPE-QUANT25.085_SN25S35001_PV.docx
+>> [MSG] - RCSPE-QUANT25.085_SN25S35002_PV.docx
+>> [MSG] Nombre total de fichiers générés : 2
+>> [MSG] Tous les documents terminés. Compte d'erreurs : 0
+>> [MSG] 
+=== EMPLACEMENT DES DOCUMENTS GÉNÉRÉS ===
+>> [MSG] Les documents ont été générés dans le dossier :
+>> [MSG] X:\Tracabilite\RCSPE-QUANT25.085\LT2500726\PV
+>> [ERROR] Le répertoire de sortie n'existe pas: X:\Production\4_Public\DEV (ne pas toucher)\AUTO_RCI_COMPLET\PV
+>> [MSG] -- OUI
+>> [MSG] Ouverture du dossier de sortie...
+>> [MSG] ===================================
+
