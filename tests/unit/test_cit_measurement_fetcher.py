@@ -11,7 +11,8 @@ import tempfile
 import shutil
 import unittest
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+import bootstrap  # noqa: F401
 
 import CitMeasurementFetcher as cit
 import ValueFetcher
@@ -94,11 +95,7 @@ class TestCitMeasurementFetcher(unittest.TestCase):
         )
 
     def test_build_cit_index_batch(self):
-        work = os.path.join(
-            os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
-            "test-unitaire",
-            "LT2500543",
-        )
+        work = os.path.join(bootstrap.PROJECT_ROOT, "test-unitaire", "LT2500543")
         if not os.path.isdir(work):
             self.skipTest(f"Données locales absentes: {work}")
         cit.clear_cit_index_cache()

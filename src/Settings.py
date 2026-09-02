@@ -16,7 +16,13 @@ will create and save them as needed.
 # constants
 CONFIG_FILES_PATH = "config"
 
-CWD = sys.path[0]
+
+def _project_root() -> str:
+    """Racine du dépôt (parent de src/), indépendamment du cwd."""
+    return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+CWD = _project_root()
 
 """
 A dictionary of all the loaded setting files. The key is the name of the file and the value is a dictionary from the contents of the file.

@@ -6,10 +6,9 @@ Définit les fixtures partagées et la configuration des tests
 import sys
 import os
 
-# Ajouter le répertoire racine au chemin Python
-root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-if root_dir not in sys.path:
-    sys.path.insert(0, root_dir)
+import bootstrap  # noqa: F401 — cwd + src/ sur sys.path
+
+root_dir = bootstrap.PROJECT_ROOT
 
 # Configuration pytest
 import pytest

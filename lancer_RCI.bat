@@ -17,10 +17,10 @@ if errorlevel 1 (
     set "PYTHON_CMD=python"
 )
 
-REM Mode d'emploi : ouvrir_mode_emploi.bat ou MODE_EMPLOI.html
+REM Mode d'emploi : ouvrir_mode_emploi.bat ou docs/MODE_EMPLOI.html
 
 REM Lance l'application
-"%PYTHON_CMD%" Interface.py
+"%PYTHON_CMD%" src\Interface.py
 
 if errorlevel 1 (
     echo.

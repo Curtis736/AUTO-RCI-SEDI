@@ -2,7 +2,7 @@
 
 Application Windows (Python / Tkinter) pour la **génération automatique de fiches Word** (RCI, RE, PV) à partir de mesures Excel, avec insertion d'images, courbes Excel, graphiques dichroïques et remplissage automatique de la **mesure de fin CIT** depuis les données de cyclage thermique.
 
-> Documentation complémentaire : [MODE_EMPLOI.html](MODE_EMPLOI.html) (utilisateur) · [DOCUMENTATION_TECHNIQUE.html](DOCUMENTATION_TECHNIQUE.html) (développeur)
+> Documentation complémentaire : [MODE_EMPLOI.html](docs/MODE_EMPLOI.html) (utilisateur) · [DOCUMENTATION_TECHNIQUE.html](docs/DOCUMENTATION_TECHNIQUE.html) (développeur)
 
 ---
 
@@ -281,7 +281,7 @@ Modèle vierge : [`config/paths.json.example`](config/paths.json.example).
 ## Architecture
 
 ```
-Interface.py              ← point d'entrée (lancer_RCI.bat)
+src/Interface.py          ← point d'entrée (lancer_RCI.bat)
 ├── PathsInterface        ← sélection des chemins
 ├── FieldFillerInterface  ← auto-remplissage depuis LT
 ├── DocumentGenerator     ← orchestration génération
@@ -364,20 +364,25 @@ Documentation détaillée : [tests_terrain/DOCUMENTATION_TESTS.html](tests_terra
 
 ```
 AUTO-RCI-SEDI/
-├── Interface.py              # Application principale
-├── DocumentGenerator.py      # Génération des fiches
-├── ValueFetcher.py           # Lecture Excel
-├── CitMeasurementFetcher.py  # Récupération fin CIT
-├── Writer.py                 # Manipulation Word
-├── ExcelController.py        # Pilotage Excel COM
-├── config/                   # Configuration utilisateur
-├── tests/                    # Tests unitaires
-├── tests_terrain/            # Tests sur LT réels
-├── tools/                    # Poppler (auto-installé)
 ├── lancer_RCI.bat            # Lancement application
-├── install_modules.bat       # Installation dépendances
-├── MODE_EMPLOI.html          # Guide utilisateur
-└── DOCUMENTATION_TECHNIQUE.html
+├── install_modules.bat         # Installation dépendances
+├── lancer_tests.bat            # Tests unitaires
+├── ouvrir_mode_emploi.bat      # Ouvre docs/MODE_EMPLOI.html
+├── config/                     # Configuration utilisateur (JSON)
+├── docs/                       # Documentation HTML
+│   ├── MODE_EMPLOI.html
+│   └── DOCUMENTATION_TECHNIQUE.html
+├── src/                        # Code source Python
+│   ├── Interface.py            # Point d'entrée
+│   ├── DocumentGenerator.py
+│   ├── ValueFetcher.py
+│   ├── CitMeasurementFetcher.py
+│   └── …
+├── scripts/                    # Utilitaires (install, tests, doc PDF)
+├── tests/                      # Tests unitaires
+├── tests_terrain/              # Tests sur LT réels
+├── tools/                      # Poppler (auto-installé)
+└── test-unitaire/              # Données LT locales (non versionné)
 ```
 
 ---

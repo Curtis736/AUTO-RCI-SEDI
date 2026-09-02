@@ -1,6 +1,8 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+import init_paths  # noqa: F401 — cwd + sys.path avant les autres imports
+
 import sys
 import os
 import traceback
@@ -28,15 +30,6 @@ import FieldFillerInterface
 
 quit = False
 
-
-# ////////////////////// INIT APP PATH /////////////////////////////////////
-# Importer le module d'initialisation des chemins en premier
-try:
-    import init_paths
-    print("Chemins d'importation initialisés avec succès")
-except ImportError as e:
-    print(f"AVERTISSEMENT: Impossible d'importer init_paths: {str(e)}")
-    print("Les importations de modules pourraient échouer si les chemins ne sont pas correctement configurés")
 
 
 

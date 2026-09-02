@@ -8,6 +8,11 @@ import subprocess
 import sys
 import os
 
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+SRC_DIR = os.path.join(PROJECT_ROOT, "src")
+sys.path.insert(0, SRC_DIR)
+os.chdir(PROJECT_ROOT)
+
 def run_command(command, description):
     """Exécute une commande et affiche le résultat"""
     print(f"\n{'='*50}")
@@ -54,7 +59,7 @@ def install_modules():
         print("ATTENTION: Échec de la mise à jour de pip, continuation...")
     
     # Vérifier si requirements.txt existe
-    requirements_file = "requirements.txt"
+    requirements_file = os.path.join(PROJECT_ROOT, "requirements.txt")
     if os.path.exists(requirements_file):
         print(f"\nInstallation depuis {requirements_file}...")
         if not run_command(

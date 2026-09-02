@@ -20,7 +20,7 @@ echo Python détecté, lancement des tests...
 echo.
 
 REM Exécuter les tests
-python run_tests.py
+python scripts\run_tests.py
 
 REM Afficher le résultat
 if errorlevel 1 (

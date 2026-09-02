@@ -1,14 +1,12 @@
 @echo off
+cd /d "%~dp0\.."
 echo ========================================
 echo    GENERATION DE LA DOCUMENTATION PDF
 echo ========================================
 echo.
-echo Ce script va generer un PDF de la documentation
-echo complete de l'application AUTO RCI.
-echo.
 pause
 
-python create_documentation_pdf.py
+python scripts\create_documentation_pdf.py
 
 echo.
 echo ========================================

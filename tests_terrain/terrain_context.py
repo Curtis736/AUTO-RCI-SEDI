@@ -6,11 +6,14 @@ import json
 import os
 import re
 import shutil
-
-import Settings
-
+import sys
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+SRC_DIR = os.path.join(PROJECT_ROOT, "src")
+sys.path.insert(0, SRC_DIR)
+os.chdir(PROJECT_ROOT)
+
+import Settings
 PROFILE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "lt_profile.json")
 
 

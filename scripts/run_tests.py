@@ -7,6 +7,13 @@ import sys
 import os
 import subprocess
 
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+TESTS_DIR = os.path.join(PROJECT_ROOT, "tests")
+SRC_DIR = os.path.join(PROJECT_ROOT, "src")
+sys.path.insert(0, os.path.join(TESTS_DIR))
+sys.path.insert(0, SRC_DIR)
+os.chdir(PROJECT_ROOT)
+
 def run_test_file(test_file):
     """Exécute un fichier de test et retourne le résultat"""
     print(f"\n{'='*60}")
@@ -17,7 +24,7 @@ def run_test_file(test_file):
         result = subprocess.run([sys.executable, test_file], 
                               capture_output=True, 
                               text=True, 
-                              cwd=os.path.dirname(os.path.abspath(__file__)))
+                              cwd=PROJECT_ROOT)
         
         print(result.stdout)
         if result.stderr:
@@ -37,13 +44,10 @@ def main():
     
     # Liste des fichiers de test dans le répertoire racine (anciens)
     root_test_files = [
-        "test_auto_rci.py",
-        "test_cit_processing.py",
-        "test_config.py"
+        os.path.join(TESTS_DIR, "test_config.py"),
     ]
     
-    # Liste des fichiers de test dans le dossier tests/
-    tests_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "tests")
+    tests_dir = TESTS_DIR
     test_files = []
     
     # Ajouter les tests du répertoire racine
