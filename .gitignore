@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+.pytest_cache/
+*.egg-info/
+
+# Logs et sorties générées
+Logs/
+output/
+*.tmp
+
+# Windows
+Thumbs.db
+Desktop.ini
+*.lnk
+~$*
+
+# Données de test locales (images, xlsm, ~230 Mo — ne pas versionner)
+test-unitaire/
+
+# Backups config locaux
+config/_backup_avant_tests/
+
+# Poppler auto-installé
+tools/poppler/
+tools/_poppler_download/
+tools/.poppler_install.lock
+tools/Release-*.zip
+
+# Fichiers binaires lourds / temporaires métier
+*.klg

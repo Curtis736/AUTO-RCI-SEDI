@@ -6,12 +6,268 @@ from tkinter import scrolledtext
 import os
 import re
 
+import ImageReader
 import TkinterClasses
 import Settings
 import Log
 import ValueFetcher
 import Writer
 import ExcelController
+
+# ---------------- SELECTION HELPERS (REF + SN) ----------------
+def _normalize_sn(sn_value):
+	if sn_value is None:
+		return ""
+	sn = str(sn_value).strip()
+	if not sn:
+		return ""
+	# Évite les collisions visuelles "0144" vs "144"
+	return sn.lstrip("0") or "0"
+
+def _extract_container_reference(container):
+	try:
+		tag_values = getattr(container, "tagAndValues", {}) or {}
+		for key in ["REF_SEDI", "**REF_SEDI**", "REF_CLIENT", "**REF_CLIENT**", "NUMPLAN", "**NUMPLAN**"]:
+			value = tag_values.get(key)
+			if value:
+				return str(value).strip().upper()
+	except Exception:
+		pass
+	return ""
+
+def _build_container_selection_key(container):
+	ref = _extract_container_reference(container)
+	sn = _normalize_sn(getattr(container, "SN", ""))
+	return f"{ref}|{sn}"
+
+def _normalize_selection_token(token):
+	"""
+	Normalise un token de sélection utilisateur :
+	- "144" -> "|144" (mode historique SN seul)
+	- "AGS23.157C|144" -> "AGS23.157C|144" (mode strict ref+sn)
+	"""
+	if token is None:
+		return ""
+	raw = str(token).strip()
+	if not raw:
+		return ""
+	if "|" not in raw:
+		return f"|{_normalize_sn(raw)}"
+	ref, sn = raw.split("|", 1)
+	return f"{ref.strip().upper()}|{_normalize_sn(sn)}"
+
+def _container_matches_selection(container, normalized_selection_tokens):
+	container_key = _build_container_selection_key(container)
+	container_sn_fallback = f"|{_normalize_sn(getattr(container, 'SN', ''))}"
+	return container_key in normalized_selection_tokens or container_sn_fallback in normalized_selection_tokens
+
+# ---------------- DICHROIC GRAPH HELPERS ----------------
+def _get_dichroic_filename_hints():
+	"""
+	Récupère la liste des mots-clés utilisés pour trouver les fichiers 'Suivi traitement ...'.
+	Configurables via paths.dichroic_filename_hint (séparateur ';').
+	"""
+	raw = Settings.GetConfigValueString("paths", "dichroic_filename_hint")
+	if raw:
+		hints = [item.strip().lower() for item in raw.split(";") if item.strip()]
+		if hints:
+			return hints
+	return ["suivi traitement"]
+
+def _normalize_filename_for_hint(name: str) -> str:
+	return name.lower().replace("_", " ").replace("-", " ")
+
+def _filename_matches_hints(filename_lower: str, hints) -> bool:
+	normalized = _normalize_filename_for_hint(filename_lower)
+	return any(hint in normalized for hint in hints)
+
+def _find_latest_dichroic_workbook(root_dir: str, filename_hints=None):
+	"""
+	Cherche récursivement le fichier Excel le plus récent contenant l'un des mots-clés fournis.
+	"""
+	try:
+		if not root_dir or not os.path.isdir(root_dir):
+			Log.Error(f"[DICHRO] Répertoire racine invalide pour la recherche : {root_dir}")
+			return None
+		if filename_hints is None:
+			filename_hints = _get_dichroic_filename_hints()
+		candidates = []
+		# Étape 1 : fichiers directement dans root_dir (prioritaire)
+		try:
+			for entry in os.scandir(root_dir):
+				if not entry.is_file():
+					continue
+				name_lower = entry.name.lower()
+				if not (name_lower.endswith(".xlsx") or name_lower.endswith(".xlsm")):
+					continue
+				if _filename_matches_hints(name_lower, filename_hints):
+					try:
+						mtime = entry.stat().st_mtime
+					except Exception:
+						mtime = 0
+					candidates.append((mtime, entry.path, True))  # True = trouvé localement
+		except Exception as e:
+			Log.Warning(f"[DICHRO] Impossible de scanner {root_dir} : {e}")
+		if candidates:
+			candidates.sort(key=lambda t: t[0], reverse=True)
+			return candidates[0][1]
+		# Étape 2 : recherche récursive
+		for base, _dirs, files in os.walk(root_dir):
+			for f in files:
+				if f.startswith("~$"):
+					continue
+				name_lower = f.lower()
+				if not (name_lower.endswith(".xlsx") or name_lower.endswith(".xlsm")):
+					continue
+				if _filename_matches_hints(name_lower, filename_hints):
+					full = os.path.join(base, f)
+					try:
+						mtime = os.path.getmtime(full)
+					except Exception:
+						mtime = 0
+					candidates.append((mtime, full, False))
+		if not candidates:
+			Log.Error(f"[DICHRO] Aucun fichier 'suivi traitement' trouvé sous {root_dir}")
+			return None
+		candidates.sort(key=lambda t: t[0], reverse=True)
+		return candidates[0][1]
+	except Exception as e:
+		Log.Error(f"[DICHRO] Erreur recherche workbook sous {root_dir} : {e}")
+		return None
+
+def _iterate_candidate_roots_for_dichro():
+	"""
+	Génère une liste de répertoires dans lesquels chercher un fichier 'suivi traitement'.
+	Ordre de priorité :
+		1. Dossier du fichier de mesures
+		2. Dossier racine du lancement
+		3. Répertoire déclaré dans paths.dichroic_root
+		4. Racine X:\\Tracabilite (fallback)
+	"""
+	seen = set()
+	def add(path):
+		if not path:
+			return
+		path = os.path.abspath(path)
+		if os.path.isdir(path) and path not in seen:
+			seen.add(path)
+			yield path
+
+	measurement_file = Settings.GetConfigValueString("paths", "measurement_file")
+	if measurement_file:
+		yield from add(os.path.dirname(measurement_file))
+
+	root_work_dir = Settings.GetConfigValueString("paths", "root_work_dir")
+	if root_work_dir:
+		yield from add(os.path.dirname(root_work_dir))
+		yield from add(root_work_dir)
+
+	config_root = Settings.GetConfigValueString("paths", "dichroic_root")
+	if config_root:
+		yield from add(config_root)
+
+	yield from add("X:\\Tracabilite")
+
+def _get_active_value_collector():
+	"""
+	Retourne le ValueCollector actuellement utilisé par le générateur.
+	Privilégie la variable globale 'values' (instanciée dans Init), sinon le singleton ValueFetcher.valueCollector.
+	"""
+	try:
+		if 'values' in globals() and values:
+			return values
+	except NameError:
+		pass
+	return ValueFetcher.valueCollector
+
+def GetDichroicGraphForSN(sn: str):
+	"""
+	Retourne le chemin PNG du graphique dichroïque associé au SN (ou None).
+	- lit la valeur DICHROIQUE dans le container du SN
+	- ouvre le fichier 'Suivi traitement ...' (configurable) et exporte le premier graphique de l'onglet correspondant.
+	"""
+	try:
+		if not sn:
+			Log.Error("[DICHRO] SN non fourni")
+			return None
+		collector = _get_active_value_collector()
+		if not collector.containers:
+			Log.Message("[DICHRO] Chargement des données Excel pour récupérer les codes dichroïques")
+			if not collector.FetchValuesInExcel():
+				Log.Error("[DICHRO] Impossible de lire le fichier de mesures")
+				return None
+		container = next((c for c in collector.containers if str(c.SN) == str(sn)), None)
+		if container is None:
+			Log.Error(f"[DICHRO] Aucun container trouvé pour SN{sn}")
+			return None
+		code = None
+		if isinstance(container.tagAndValues, dict):
+			# Chercher les clés exactes connues
+			for key in ["DICHROIQUE", "**DICHROIQUE**", "Dichroique", "Dichroïque"]:
+				value = container.tagAndValues.get(key)
+				if value:
+					code_candidate = str(value).strip()
+					if code_candidate:
+						code = code_candidate
+						break
+			# Sinon, essayer de détecter une clé contenant "dichro"
+			if not code:
+				for existing_key, existing_val in container.tagAndValues.items():
+					if existing_val is None:
+						continue
+					normalized = existing_key.replace("*", "").replace("_", "").strip().lower()
+					if "dichro" in normalized:
+						code_candidate = str(existing_val).strip()
+						if code_candidate:
+							code = code_candidate
+							break
+		if not code:
+			Log.Error(f"[DICHRO] Code dichroïque manquant pour SN{sn}")
+			return None
+		sheet_variants = []
+		def add_variant(val):
+			v = val.strip()
+			if v and v not in sheet_variants:
+				sheet_variants.append(v)
+		add_variant(code)
+		add_variant(code.replace("/", "-"))
+		add_variant(code.replace("-", "/"))
+		add_variant(code.replace("/", "_"))
+		add_variant(code.replace("-", "_"))
+		add_variant(code.replace(" ", ""))
+
+		workbook_path = Settings.GetConfigValueString("paths", "dichroic_workbook")
+		if not workbook_path:
+			for root_dir in _iterate_candidate_roots_for_dichro():
+				workbook_path = _find_latest_dichroic_workbook(root_dir)
+				if workbook_path:
+					break
+		if not workbook_path or not os.path.isfile(workbook_path):
+			Log.Error(f"[DICHRO] Classeur 'suivi traitement' introuvable (configuré: {workbook_path})")
+			return None
+		if not ExcelController.OpenExcel():
+			Log.Error("[DICHRO] Impossible d'initialiser Excel")
+			return None
+		for sheet_name in sheet_variants:
+			Log.Message(f"[DICHRO] Tentative export feuille '{sheet_name}' depuis {workbook_path}")
+			path = ExcelController.ExportFirstChartFromSheet(workbook_path, sheet_name)
+			if path:
+				return path
+		# journaliser les feuilles disponibles pour debug
+		try:
+			import openpyxl  # type: ignore
+			wb = openpyxl.load_workbook(workbook_path, data_only=True, read_only=True)
+			available = list(wb.sheetnames)
+			Log.Error(f"[DICHRO] Feuilles disponibles dans {workbook_path}: {available}")
+		except ModuleNotFoundError:
+			Log.Warning("[DICHRO] Module openpyxl non disponible, impossible de lister les feuilles")
+		except Exception as e:
+			Log.Error(f"[DICHRO] Impossible de lister les feuilles: {e}")
+		Log.Error(f"[DICHRO] Aucune feuille correspondante trouvée pour {sheet_variants} dans {workbook_path}")
+		return None
+	except Exception as e:
+		Log.Error(f"[DICHRO] Erreur GetDichroicGraphForSN (SN{sn}) : {e}")
+		return None
 
 # Fonction utilitaire pour s'assurer qu'un répertoire existe
 def ensure_directory_exists(directory_path):
@@ -224,27 +480,29 @@ def GenDoc() :
 	loadingIcon.SetText("en cours")
 
 	
-	# Synchronisation automatique du LT depuis le chemin si vide
-	if Settings.GetConfigValue("fields", "LT") == None :
-		try:
-			from PathsInterface import extract_lt_from_path
-			lt_from_path = extract_lt_from_path(Settings.GetConfigValueString("paths", "root_work_dir"))
-			if lt_from_path:
-				Settings.SetConfigValue("fields", "LT", lt_from_path)
-				ValueFetcher.valueCollector.LT = lt_from_path
-				values.LT = lt_from_path
-				Log.Message(f"[DEBUG] LT synchronisé automatiquement depuis le chemin : {lt_from_path}")
-			else:
-				Log.Warning("Impossible d'extraire le LT du chemin de travail.")
-		except Exception as e:
-			Log.Warning(f"Erreur lors de la synchronisation automatique du LT : {e}")
+	# Synchroniser LT / plan depuis les chemins configurés
+	work_dir = Settings.GetConfigValueString("paths", "root_work_dir")
+	try:
+		from PathsInterface import extract_lt_from_path
+		lt_from_path = extract_lt_from_path(work_dir)
+		if lt_from_path:
+			Settings.SetConfigValue("fields", "LT", lt_from_path)
+			values.LT = lt_from_path
+			ValueFetcher.valueCollector.LT = lt_from_path
+	except Exception as e:
+		Log.Warning(f"Erreur lors de la synchronisation automatique du LT : {e}")
 
-	# Les valeurs de lancement et plan sont déjà définies par défaut
-	# Plus besoin de vérifier si les champs sont remplis
-	
-	# Mettre à jour les valeurs
-	values.LT = Settings.GetConfigValueString("fields", "LT")
-	values.numPlan = Settings.GetConfigValueString("fields", "num_plan")
+	values.LT = Settings.GetConfigValueString("fields", "LT") or values.LT
+	num_plan = Settings.GetConfigValueString("fields", "num_plan")
+	if not num_plan or str(num_plan).lower() == "none":
+		num_plan = values.extract_numplan_from_excel_filename()
+		if not num_plan and work_dir:
+			plan_match = re.search(r"\d+\.\d+[A-Z]?", work_dir.upper())
+			if plan_match:
+				num_plan = plan_match.group(0)
+		if num_plan:
+			Settings.SetConfigValue("fields", "num_plan", num_plan)
+	values.numPlan = Settings.GetConfigValueString("fields", "num_plan") or num_plan or values.numPlan
 	
 	# Afficher le chemin de sortie avant la génération
 	output_dir = os.path.abspath(os.path.join(Settings.GetConfigValueString("paths", "root_work_dir"), Settings.GetConfigValueString("paths", "generator_out_path")))
@@ -340,10 +598,11 @@ def SelectSingleSN():
 	# Lire le fichier Excel pour obtenir la liste des SN disponibles
 	try:
 		# Vérifier d'abord si les valeurs nécessaires sont définies
-		if not values.LT or not values.numPlan:
-			Log.Error("Le numéro de lancement ou le numéro de plan est manquant")
-			Log.Message("Utilisation des valeurs par défaut pour le numéro de lancement et le numéro de plan")
-			# Continuer avec les valeurs par défaut
+		if not values.LT:
+			Log.Error("Le numéro de lancement est manquant — vérifiez root_work_dir et fields.json (LT)")
+			return None
+		if not values.numPlan or str(values.numPlan).lower() == "none":
+			values.numPlan = values.extract_numplan_from_excel_filename() or "00.000"
 			
 		Log.Message("Tentative de lecture du fichier Excel...")
 		if not values.FetchValuesInExcel():
@@ -471,12 +730,24 @@ def GenerateSingleDocument(selected_sns=None) :
 	
 	# Filtrer les containers si un SN spécifique a été sélectionné
 	if selected_sns:
+		normalized_selection_tokens = {
+			_normalize_selection_token(token)
+			for token in selected_sns
+			if _normalize_selection_token(token)
+		}
 		# Filtrer les containers pour les SN sélectionnés
-		containers = [container for container in allContainers if container.SN in selected_sns]
+		containers = [
+			container
+			for container in allContainers
+			if _container_matches_selection(container, normalized_selection_tokens)
+		]
 		if not containers :
 			Log.Error(f"tous les SNs sélectionnés n'ont pas pu être trouvés dans le fichier excel")
 			return False
-		Log.Message(f"Génération du document pour les SNs sélectionnés : {', '.join(selected_sns)}")
+		Log.Message(
+			f"Génération du document pour les sélections ({len(normalized_selection_tokens)}) : "
+			f"{', '.join(sorted(normalized_selection_tokens))}"
+		)
 	else:
 		# Filtrer les containers pour ne garder que ceux du LT actuel
 		lt_sns = values.FindSNFromLT(values.LT)
@@ -807,6 +1078,7 @@ def IsFileMatchingSN(file_name, SN):
 	"""
 	Fonction générique pour vérifier si un nom de fichier correspond à un numéro de série donné.
 	Prend en compte différents formats de noms de fichiers.
+	Utilise des correspondances exactes pour éviter que "SN1" matche "SN10", "SN11", etc.
 	
 	Parameters:
 	- file_name: Nom du fichier à vérifier
@@ -816,26 +1088,39 @@ def IsFileMatchingSN(file_name, SN):
 	- True si le fichier correspond au numéro de série, False sinon
 	"""
 	# Normaliser le numéro de série pour la recherche
-	sn_normalized = SN.lstrip("0")  # Supprimer les zéros non significatifs
+	sn_normalized = SN.lstrip("0") if SN.lstrip("0") else SN  # Éviter de supprimer tous les zéros si SN = "0"
 	sn_with_zeros = [SN, SN.zfill(2), SN.zfill(3)]  # Versions avec zéros
 	
-	# Format 1: Recherche directe des différentes variantes du numéro
+	# Format 1: Recherche avec word boundaries pour éviter les correspondances partielles
+	# Exemple: "SN1" ne doit pas matcher "SN10", "SN11", etc.
+	# Exemple: "SN25" ne doit pas matcher "SN250", "SN251", etc.
 	for sn_variant in sn_with_zeros:
-		if f"SN{sn_variant}" in file_name or f"SN {sn_variant}" in file_name:
+		# Utiliser des lookahead négatifs pour s'assurer que le numéro n'est pas suivi d'un chiffre
+		# Pattern: SN suivi du numéro, avec vérification qu'il n'y a pas de chiffre après
+		pattern_sn_no_space = re.compile(r'SN' + re.escape(sn_variant) + r'(?!\d)', re.IGNORECASE)
+		pattern_sn_with_space = re.compile(r'SN\s+' + re.escape(sn_variant) + r'(?!\d)', re.IGNORECASE)
+		
+		if pattern_sn_no_space.search(file_name) or pattern_sn_with_space.search(file_name):
 			return True
 	
 	# Format 2: Format spécifique "24.131 SN 03 SE" ou similaire
 	# Recherche de motifs comme "SN 03" ou "SN 3" entourés d'espaces ou de caractères non alphanumériques
-	pattern1 = re.compile(r'SN\s*' + re.escape(sn_normalized) + r'\b')
-	pattern2 = re.compile(r'SN\s*' + re.escape(SN.zfill(2)) + r'\b')
+	# Utiliser \b (word boundary) pour s'assurer que le numéro est complet
+	pattern1 = re.compile(r'SN\s*' + re.escape(sn_normalized) + r'\b', re.IGNORECASE)
+	pattern2 = re.compile(r'SN\s*' + re.escape(SN.zfill(2)) + r'\b', re.IGNORECASE)
 	
 	if pattern1.search(file_name) or pattern2.search(file_name):
 		return True
 	
 	# Format 3: Recherche du numéro seul entouré d'espaces ou au début/fin du nom
 	# Utile pour les formats comme "24.131 03 SE" où "SN" pourrait être omis
-	pattern3 = re.compile(r'(?:^|\s)' + re.escape(sn_normalized) + r'(?:\s|$)')
-	pattern4 = re.compile(r'(?:^|\s)' + re.escape(SN.zfill(2)) + r'(?:\s|$)')
+	# Utiliser des délimiteurs stricts pour éviter "25" dans "250" ou "251"
+	# Le numéro doit être précédé d'un caractère non-chiffre (ou début de chaîne) 
+	# ET suivi d'un caractère non-chiffre (ou fin de chaîne)
+	# IMPORTANT: Utiliser \b (word boundary) pour s'assurer que le numéro est complet
+	# Mais \b ne fonctionne pas bien avec les chiffres, donc on utilise des lookahead/lookbehind
+	pattern3 = re.compile(r'(?<!\d)' + re.escape(sn_normalized) + r'(?!\d)', re.IGNORECASE)
+	pattern4 = re.compile(r'(?<!\d)' + re.escape(SN.zfill(2)) + r'(?!\d)', re.IGNORECASE)
 	
 	if pattern3.search(file_name) or pattern4.search(file_name):
 		return True
@@ -941,11 +1226,6 @@ def AddPicToDoc(path : str, pathID : int, number : str, tag : str, SN : str, end
 	if not os.path.exists(path):
 		Log.Error(f"Le chemin {path} n'existe pas")
 		return False
-
-	# Cas spécial pour SN07 - recherche élargie
-	if SN == "07":
-		Log.Message(f"Recherche spéciale pour SN07 - Élargissement des critères de recherche")
-		return HandleSN07Images(path, pathID, number, tag, SN, endType, titles, selection_title)
 	
 	Log.Message(f"Recherche d'images pour SN{SN} dans {path}")
 	
@@ -1264,25 +1544,41 @@ def GenerateDocumentsForSNList(sn_list):
 		if not all_containers:
 			raise Exception("Aucune donnée n'a pu être récupérée du fichier Excel")
 		
-		# Créer un dictionnaire pour un accès rapide aux containers par SN
-		container_dict = {container.SN: container for container in all_containers}
+		# Créer des index rapides : clé stricte (REF|SN) + fallback historique (SN seul)
+		container_dict_by_key = {}
+		container_dict_by_sn = {}
+		for container in all_containers:
+			strict_key = _build_container_selection_key(container)
+			container_dict_by_key[strict_key] = container
+			sn_key = _normalize_sn(container.SN)
+			container_dict_by_sn.setdefault(sn_key, []).append(container)
 		
 		# Vérifier que tous les SN appartiennent au LT actuel
 		lt_sns = values.FindSNFromLT(values.LT)
 		lt_sns_set = set(lt_sns)
+		lt_sns_normalized = {_normalize_sn(item) for item in lt_sns_set}
 		
 		# Filtrer les SN qui existent dans le fichier Excel ET appartiennent au LT
 		valid_sn_list = []
 		for sn in sn_list:
-			if sn in container_dict:
-				if sn in lt_sns_set:
+			normalized_input_token = _normalize_selection_token(sn)
+			matching_containers = []
+			if "|" in str(sn):
+				container = container_dict_by_key.get(normalized_input_token)
+				if container:
+					matching_containers = [container]
+			else:
+				matching_containers = container_dict_by_sn.get(_normalize_sn(sn), [])
+
+			if matching_containers:
+				if _normalize_sn(sn) in lt_sns_normalized:
 					valid_sn_list.append(sn)
 					Log.Message(f"SN{sn} trouvé dans le fichier Excel et appartient au LT {values.LT}")
 				else:
 					Log.Warning(f"SN{sn} trouvé dans le fichier Excel mais n'appartient pas au LT {values.LT}")
 			else:
 				# Créer un container de test pour ce SN seulement s'il appartient au LT
-				if sn in lt_sns_set:
+				if _normalize_sn(sn) in lt_sns_normalized:
 					Log.Warning(f"SN{sn} non trouvé dans le fichier Excel mais appartient au LT {values.LT}, création d'un container de test")
 					test_container = ValueFetcher.Container(sn)
 					test_container.LT = values.LT
@@ -1301,7 +1597,7 @@ def GenerateDocumentsForSNList(sn_list):
 					test_container.tagAndValues["**TITREPLAN**"] = test_container.titrePlan
 					
 					test_container.TryVerifyAllSpecs = lambda: True
-					container_dict[sn] = test_container
+					container_dict_by_sn.setdefault(_normalize_sn(sn), []).append(test_container)
 					valid_sn_list.append(sn)
 				else:
 					Log.Warning(f"SN{sn} non trouvé dans le fichier Excel et n'appartient pas au LT {values.LT}")
@@ -1436,3 +1732,4 @@ def AskInputQuestion(question):
 			break
 	
 	return input_answer
+

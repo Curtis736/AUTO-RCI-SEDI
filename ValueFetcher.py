@@ -32,6 +32,80 @@ except ImportError:
 
 import Writer
 
+# Tags correspondant à des identifiants (numéros de commande, références, etc.).
+# Ces valeurs sont parfois stockées comme des nombres dans Excel, ce qui leur
+# ajoute des décimales indésirables (ex: "4572146897,00"). On les traite comme
+# des entiers/du texte, sans décimales, comme c'est déjà le cas pour le SN.
+IDENTIFIER_TAGS = {"SN", "Cde_AGS", "CDE_CLIENT", "CDE_SEDI", "REF_CLIENT", "BL", "LT"}
+
+
+def strip_decimal_suffix(text: str) -> str:
+    """Supprime un suffixe décimal nul (",00", ".0", etc.) d'un identifiant numérique."""
+    if not isinstance(text, str):
+        return text
+    for suffix in (",00", ".00", ",0", ".0"):
+        if text.endswith(suffix):
+            return text[: -len(suffix)]
+    return text
+
+
+def format_number_for_display(value, max_decimals=2):
+    """
+    Formate un nombre pour l'affichage en conservant les zéros après la virgule.
+    Utilise le format français avec virgule comme séparateur décimal.
+    
+    Args:
+        value: La valeur à formater (int, float, ou string)
+        max_decimals: Nombre de décimales à afficher (défaut: 2)
+    
+    Returns:
+        str: La valeur formatée sous forme de chaîne avec virgule comme séparateur
+    
+    Exemples:
+        2.0 -> "2,00"
+        1.234567 -> "1,23" (avec max_decimals=2)
+        42 -> "42"
+        0.03 -> "0,03"
+    """
+    if value is None:
+        return ""
+    
+    # Si c'est déjà une chaîne, essayer de la convertir en nombre
+    if isinstance(value, str):
+        if value.strip() == "":
+            return ""
+        # Si la chaîne contient déjà une virgule, c'est peut-être déjà formaté
+        if "," in value and "." not in value:
+            # C'est peut-être déjà au format français, vérifier si c'est un nombre
+            try:
+                # Essayer de convertir en remplaçant la virgule par un point
+                float(value.replace(",", "."))
+                # C'est un nombre, retourner tel quel
+                return value
+            except ValueError:
+                pass
+        try:
+            value = float(value.replace(",", "."))
+        except ValueError:
+            # Si ce n'est pas un nombre, retourner tel quel
+            return str(value)
+    
+    # Si c'est un entier, le formater avec des décimales (ex: 42 -> "42,00")
+    if isinstance(value, int):
+        formatted = f"{value:.{max_decimals}f}"
+        # Remplacer le point par une virgule
+        return formatted.replace(".", ",")
+    
+    # Si c'est un float
+    if isinstance(value, float):
+        # Formater avec le nombre de décimales demandé (sans supprimer les zéros)
+        formatted = f"{value:.{max_decimals}f}"
+        # Remplacer le point par une virgule (format français)
+        return formatted.replace(".", ",")
+    
+    # Pour tout autre type, convertir en string
+    return str(value)
+
 # Vérifier si win32timezone est disponible
 try:
     import win32timezone
@@ -55,6 +129,32 @@ except ImportError:
 
 # Déclarer la variable globale
 valueCollector = None
+
+
+def _normalize_lt(value: str) -> str:
+    if value is None:
+        return ""
+    v = str(value).replace(" ", "").strip().upper()
+    if v and not v.startswith("LT"):
+        v = "LT" + v
+    return v
+
+
+def _lt_numbers_equal(a: str, b: str) -> bool:
+    na = _normalize_lt(a).replace("LT", "").lstrip("0")
+    nb = _normalize_lt(b).replace("LT", "").lstrip("0")
+    return bool(na) and na == nb
+
+
+def _default_value_for_tag(key: str, collector) -> str:
+    key_upper = str(key).upper().strip("*")
+    if key_upper == "LT":
+        return collector.LT
+    if key_upper == "NUMPLAN":
+        return collector.numPlan
+    if key_upper == "DATE":
+        return collector.date
+    return ""
 
 """
 The list of all text tag values, found in the measurement excel file, associated with a specific SN (a row)
@@ -139,6 +239,23 @@ class Container :
         except ValueError:
             Log.Error(f"Impossible de convertir la valeur '{value_str}' en nombre pour la mesure {key} (SN{self.SN})")
             return False
+
+def EnsureCitAliases(tag_map: dict):
+    """
+    Assure la compatibilité des alias CIT dans un dictionnaire de tags.
+    Maintient CIT, FIN_CIT et fin_cit synchronisés.
+    """
+    if not isinstance(tag_map, dict):
+        return tag_map
+    cit_value = tag_map.get("FIN_CIT") or tag_map.get("fin_cit") or tag_map.get("CIT")
+    if cit_value is not None and str(cit_value).strip() != "":
+        for key in ("CIT", "FIN_CIT", "fin_cit"):
+            tag_map[key] = cit_value
+    elif "FIN_CIT" in tag_map and "fin_cit" not in tag_map:
+        tag_map["fin_cit"] = tag_map["FIN_CIT"]
+    elif "fin_cit" in tag_map and "FIN_CIT" not in tag_map:
+        tag_map["FIN_CIT"] = tag_map["fin_cit"]
+    return tag_map
 
 
 class Spec :
@@ -302,23 +419,76 @@ class ValueCollector :
             return 0
         
         try:
-            # Création de l'instance Excel avec gestion explicite des erreurs
+            # Initialiser le COM pour ce thread (sans effet si déjà initialisé)
             try:
-                # Utiliser Dispatch au lieu de gencache.EnsureDispatch qui peut poser problème
-                self.excelApp = win32com.client.Dispatch("Excel.Application")
-                self.excelApp.Visible = 0  # False = 0, non visible
-                self.excelApp.DisplayAlerts = 0  # False = 0, pas d'alertes
+                pythoncom.CoInitialize()
+            except Exception:
+                pass
+
+            # Création de l'instance Excel, avec une tentative de récupération si
+            # le cache win32com (gen_py) est corrompu.
+            try:
+                self.excelApp = self._create_excel_instance()
                 self.isExcelOpen = True
                 Log.Message("Instance Excel créée avec succès dans ValueFetcher")
                 return 1
             except Exception as excel_err:
-                Log.Error(f"Erreur lors de la création de l'instance Excel: {str(excel_err)}")
-                return 0
-        
+                Log.Warning(f"Première tentative d'ouverture d'Excel échouée: {str(excel_err)}")
+                # Le cache early-binding de win32com peut être corrompu : le vider et réessayer
+                self._clear_win32com_cache()
+                try:
+                    self.excelApp = self._create_excel_instance()
+                    self.isExcelOpen = True
+                    Log.Message("Instance Excel créée avec succès après nettoyage du cache win32com")
+                    return 1
+                except Exception as retry_err:
+                    Log.Error(f"Erreur lors de la création de l'instance Excel: {str(retry_err)}")
+                    return 0
+
         except Exception as e:
             Log.Error(f"Erreur générale lors de l'ouverture d'Excel: {str(e)}")
             Log.Error(traceback.format_exc())
             return 0
+
+    def _create_excel_instance(self):
+        """
+        Crée une instance Excel dédiée. Utilise DispatchEx pour forcer un nouveau
+        processus Excel (évite de s'attacher à une instance existante bloquée).
+        Le réglage de Visible/DisplayAlerts est non bloquant : Excel peut refuser
+        temporairement ces propriétés sans que cela empêche la lecture du fichier.
+        """
+        try:
+            app = win32com.client.DispatchEx("Excel.Application")
+        except Exception:
+            # Repli sur Dispatch classique si DispatchEx n'est pas disponible
+            app = win32com.client.Dispatch("Excel.Application")
+
+        # Ces propriétés sont pratiques mais non essentielles : ne pas échouer si
+        # Excel refuse de les définir ("property ... can not be set").
+        for prop in ("Visible", "DisplayAlerts"):
+            try:
+                setattr(app, prop, 0)
+            except Exception as prop_err:
+                Log.Warning(f"Impossible de définir Excel.Application.{prop}: {str(prop_err)}")
+
+        return app
+
+    def _clear_win32com_cache(self):
+        """
+        Supprime le cache d'early-binding de win32com (gen_py), souvent responsable
+        de l'erreur "property ... can not be set". Il sera régénéré automatiquement.
+        """
+        try:
+            import shutil
+            import win32com
+            gen_py_path = os.path.join(os.environ.get("TEMP", ""), "gen_py")
+            candidates = [gen_py_path, os.path.join(os.path.dirname(win32com.__file__), "gen_py")]
+            for path in candidates:
+                if path and os.path.isdir(path):
+                    shutil.rmtree(path, ignore_errors=True)
+                    Log.Message(f"Cache win32com supprimé: {path}")
+        except Exception as e:
+            Log.Warning(f"Impossible de nettoyer le cache win32com: {str(e)}")
 
     def CloseExcel(self) :
         """
@@ -384,6 +554,73 @@ class ValueCollector :
             return []
         args = split[1]
         return args.split(";")
+
+    def _apply_fin_cit_autofill(self):
+        """Remplit FIN_CIT depuis THERMAL_CYCLING si la colonne Excel est vide."""
+        try:
+            from CitMeasurementFetcher import apply_fin_cit_to_containers
+            work_dir = Settings.GetConfigValueString("paths", "root_work_dir")
+            apply_fin_cit_to_containers(self.containers, work_dir)
+        except Exception as cit_err:
+            Log.Warning(f"[CIT] Auto-remplissage mesure de fin impossible: {cit_err}")
+
+    def _build_containers_from_tag_values(self) -> bool:
+        """Crée self.containers à partir de self.tagAndValues (colonne SN requise)."""
+        if "SN" not in self.tagAndValues:
+            Log.Error("Le fichier Excel ne contient pas de colonne avec un tag 'SN'")
+            return False
+
+        validRows = []
+        for i, value in enumerate(self.tagAndValues["SN"]):
+            if value and str(value).strip():
+                validRows.append(i)
+
+        if not validRows:
+            Log.Error(f"Aucun SN trouvé dans {Settings.GetConfigValueString('paths', 'measurement_file')}")
+            return False
+
+        Log.Message(f"Nombre de lignes valides trouvées: {len(validRows)}")
+        self.containers.clear()
+        self.foundSns.clear()
+        Log.Message("Création des containers dans l'ordre original du fichier Excel")
+
+        for row in validRows:
+            SN = self.tagAndValues["SN"][row]
+            self.foundSns.append(SN)
+            container = Container(SN)
+
+            for key in self.tagAndValues.keys():
+                value = self.tagAndValues[key][row] if row < len(self.tagAndValues[key]) else ""
+                if not value or value == "" or value is None:
+                    container.undefinedValues.append(key)
+                    Log.Message(f"Valeur manquante pour {key} dans SN{SN}")
+                    default = _default_value_for_tag(key, self)
+                    if default:
+                        value = default
+
+                if value:
+                    Log.Verbose(f"added {key}:{value} to container {SN}")
+                    container.tagAndValues[key] = value
+                    EnsureCitAliases(container.tagAndValues)
+
+            container.LT = (
+                container.tagAndValues.get("LT")
+                or container.tagAndValues.get("**LT**")
+                or self.LT
+            )
+
+            for key, value in self.tagAndSpecs.items():
+                if row < len(value):
+                    container.tagAndSpecs[key] = value[row]
+                else:
+                    container.tagAndSpecs[key] = None
+
+            self.containers.append(container)
+            Log.Message(f"Container créé pour SN{SN} avec {len(container.tagAndValues)} valeurs")
+
+        self._apply_fin_cit_autofill()
+        Log.Message("Conservation de l'ordre original des données du fichier Excel")
+        return True
         
     
     def FetchValuesInExcel(self) :
@@ -484,18 +721,13 @@ class ValueCollector :
                         if val[0] is None:
                             newVal = ""
                         else:
-                            # Forcer la conversion en string et traiter les cas particuliers
-                            if isinstance(val[0], (int, float)):
-                                newVal = str(val[0])
-                                # Supprimer les décimales inutiles (.0)
-                                if newVal.endswith(".0"):
-                                    newVal = newVal.split(".")[0]
-                            else:
-                                newVal = str(val[0])
+                            # Utiliser la fonction utilitaire pour formater les nombres
+                            newVal = format_number_for_display(val[0])
                                 
-                        # Un SN ne devrait pas avoir de décimale
-                        if newVal.endswith(".0") and tag == "SN" :
-                            newVal = newVal.removesuffix(".0")
+                        # Un identifiant (SN, n° de commande, référence...) ne doit
+                        # pas avoir de décimale. Gérer le format point et virgule.
+                        if tag in IDENTIFIER_TAGS :
+                            newVal = strip_decimal_suffix(newVal)
                         
                         fixedValues.append(newVal)
                     
@@ -555,70 +787,14 @@ class ValueCollector :
                 workbook.Close(False)
                 self.CloseExcel()
                 return False
-            
-            # Utiliser toutes les lignes qui ont un SN
-            validRows = []
-            i = 0
-            for value in self.tagAndValues["SN"] :
-                if value and value.strip():  # Si la valeur SN n'est pas vide
-                    validRows.append(i)
-                i += 1
-            
-            if len(validRows) == 0 :
-                Log.Error(f"Aucun SN trouvé dans {Settings.GetConfigValueString('paths', 'measurement_file')}")
+
+            if not self._build_containers_from_tag_values():
                 workbook.Close(False)
                 self.CloseExcel()
                 return False
-            
-            Log.Message(f"Nombre de lignes valides trouvées: {len(validRows)}")
-    
-            # Créer les containers pour chaque SN
-            self.containers.clear()
-            self.foundSns.clear()
-            
-            # Utiliser les lignes valides dans leur ordre original
-            Log.Message("Création des containers dans l'ordre original du fichier Excel")
-            
-            for row in validRows :
-                SN = self.tagAndValues["SN"][row]
-                self.foundSns.append(SN)
-                container = Container(SN)
-                
-                # Copier toutes les valeurs dans le container
-                for key in self.tagAndValues.keys() :
-                    
-                    value = self.tagAndValues[key][row] if row < len(self.tagAndValues[key]) else ""
-                    if not value or value == "" or value is None:
-                        container.undefinedValues.append(key)
-                        Log.Message(f"Valeur manquante pour {key} dans SN{SN}")
-                        # Fournir une valeur par défaut pour les tags critiques
-                        if key == "**LT**":
-                            value = self.LT
-                        elif key == "**NUMPLAN**":
-                            value = self.numPlan
-                        elif key == "**DATE**":
-                            value = self.date
-                    
-                    else :
-                        Log.Verbose(f"added {key}:{value} to container {SN}")
-                        container.tagAndValues[key] = value
-                
-                # Copier les spécifications
-                for key, value in self.tagAndSpecs.items() :
-                    if row < len(value):
-                        container.tagAndSpecs[key] = value[row]
-                    else:
-                        container.tagAndSpecs[key] = None
-                
-                self.containers.append(container)
-                Log.Message(f"Container créé pour SN{SN} avec {len(container.tagAndValues)} valeurs")
-    
+
             workbook.Close(True)
             self.CloseExcel()
-    
-            # IMPORTANT: Ne pas trier les containers pour conserver l'ordre original
-            Log.Message("Conservation de l'ordre original des données du fichier Excel")
-            
             return True
             
         except Exception as e:
@@ -695,9 +871,9 @@ class ValueCollector :
                 # Other measurements
                 "Dérogation": "derog",
                 "DEROGATION": "derog",
-                "CIT": "fin_cit",
-                "FIN CIT": "fin_cit",
-                "FIN_CIT": "fin_cit",
+                "CIT": "FIN_CIT",
+                "FIN CIT": "FIN_CIT",
+                "FIN_CIT": "FIN_CIT",
                 
                 # Personnel
                 "Controleur": "Controleur",
@@ -722,16 +898,39 @@ class ValueCollector :
                 "Lancement": "LT",
                 "N° Lancement": "LT",
                 "AGS": "Cde_AGS",
-                "Commande AGS": "Cde_AGS"
+                "Commande AGS": "Cde_AGS",
+                # Dichroïque (avec et sans accent/étoiles)
+                "DICHROIQUE": "DICHROIQUE",
+                "Dichroique": "DICHROIQUE",
+                "Dichroïque": "DICHROIQUE",
+                "**DICHROIQUE**": "DICHROIQUE"
             }
             
-            # Lire les titres des colonnes (première ligne)
+            # Trouver la ligne d'en-têtes (contient une colonne **SN**)
+            header_row = None
+            for row in range(1, min(16, last_row + 1)):
+                for col in range(1, last_col + 1):
+                    title = worksheet.Cells(row, col).Value
+                    if title and ValueCollector.FindTagInString(str(title)) == "SN":
+                        header_row = row
+                        break
+                if header_row is not None:
+                    break
+
+            if header_row is None:
+                Log.Error("Lecture directe : aucune colonne SN (**SN**) trouvée dans les 15 premières lignes")
+                workbook.Close(False)
+                self.CloseExcel()
+                return False
+
+            Log.Message(f"Ligne d'en-têtes détectée : ligne {header_row}")
+
+            # Lire les titres des colonnes sur la ligne d'en-têtes
             Log.Message("\n=== ANALYSE DES TITRES DE COLONNES ===")
-            column_tags = {}  # Pour stocker les associations colonne -> tag
+            column_tags = {}
             for col in range(1, last_col + 1):
-                title = worksheet.Cells(1, col).Value
+                title = worksheet.Cells(header_row, col).Value
                 if title:
-                    # Vérifier d'abord si c'est un titre spécial
                     title_str = str(title).strip()
                     if title_str in special_column_titles:
                         tag = special_column_titles[title_str]
@@ -742,7 +941,6 @@ class ValueCollector :
                         column_tags[col] = tag
                         Log.Message(f"Colonne {col}: Titre '{title_str}' -> Tag '{tag}'")
                     else:
-                        # Sinon, chercher un tag normal
                         tag = ValueCollector.FindTagInString(str(title))
                         if tag:
                             column_tags[col] = tag
@@ -754,38 +952,28 @@ class ValueCollector :
             
             # Lire les valeurs pour chaque colonne identifiée
             Log.Message("\n=== LECTURE DES VALEURS ===")
+            data_start = header_row + 1
+            num_rows = last_row - header_row
             for col, tag in column_tags.items():
                 values = []
                 empty_count = 0
-                for row in range(2, last_row + 1):  # Commencer à la ligne 2 (après les titres)
-                            cell_value = worksheet.Cells(row, col).Value
-                            
-                    # Convertir la valeur en string et la nettoyer
-                            if cell_value is None:
-                                str_value = ""
-                            empty_count += 1
-                else:
-                        # Forcer la conversion en string et traiter les cas particuliers
-                        if isinstance(cell_value, (int, float)):
-                            str_value = str(cell_value)
-                            # Supprimer les décimales inutiles (.0)
-                            if str_value.endswith(".0"):
-                                str_value = str_value.split(".")[0]
-                            else:
-                                str_value = str(cell_value)
-                                        
-                                    # Un SN ne devrait pas avoir de décimale
-                        if str_value.endswith(".0") and tag == "SN":
-                            str_value = str_value.removesuffix(".0")
+                for row in range(data_start, last_row + 1):
+                    cell_value = worksheet.Cells(row, col).Value
                     
-                        values.append(str_value)
-                        Log.Verbose(f"Colonne {col} (tag {tag}), ligne {row}: '{str_value}'")
+                    if cell_value is None:
+                        str_value = ""
+                        empty_count += 1
+                    else:
+                        str_value = format_number_for_display(cell_value)
+                        if tag in IDENTIFIER_TAGS:
+                            str_value = strip_decimal_suffix(str_value)
+                    
+                    values.append(str_value)
+                    Log.Verbose(f"Colonne {col} (tag {tag}), ligne {row}: '{str_value}'")
                 
-                # Stocker les valeurs
                 self.tagAndValues[tag] = values
                 Log.Message(f"Tag {tag}: {len(values)} valeurs lues, dont {empty_count} vides")
                 
-                # Gestion des spécifications (tags commençant par SPEC_)
                 if tag.startswith("SPEC_"):
                     if len(tag) <= len("SPEC_"):
                         Log.Error("Un tag 'SPEC_' doit avoir un identifiant")
@@ -806,40 +994,30 @@ class ValueCollector :
                             allSpecsForThisTag.append(result)
                             Log.Message(f"Spécification valide: {value}")
                     
-                            self.tagAndSpecs[originalTag] = allSpecsForThisTag
+                    self.tagAndSpecs[originalTag] = allSpecsForThisTag
             
             # Ajouter les tags constants
             Log.Message("\n=== AJOUT DES TAGS CONSTANTS ===")
-            num_rows = last_row - 1  # Soustraire 1 pour la ligne de titre
             self.tagAndValues["**NUMPLAN**"] = [self.numPlan] * num_rows
             self.tagAndValues["**TITREPLAN**"] = [Settings.GetConfigValueString("fields", "TITREPLAN")] * num_rows
             self.tagAndValues["**DATE**"] = [self.date] * num_rows
-            Log.Message(f"Tags constants ajoutés pour {num_rows} lignes:")
-            Log.Message(f"- **NUMPLAN**: {self.numPlan}")
-            Log.Message(f"- **TITREPLAN**: {Settings.GetConfigValueString('fields', 'TITREPLAN')}")
-            Log.Message(f"- **DATE**: {self.date}")
             
-            # Vérifier que chaque spec a son tag normal correspondant
-            Log.Message("\n=== VÉRIFICATION DES SPÉCIFICATIONS ===")
+            # Vérifier specs
             for normalTag in self.tagAndSpecs.keys():
                 if normalTag not in self.tagAndValues.keys():
-                    Log.Warning(f"La spec pour les valeurs marquées '{normalTag}' existe mais ce marquage n'existe pas dans les données")
-                    # Créer un tag vide plutôt que d'échouer
+                    Log.Warning(f"La spec pour '{normalTag}' existe mais le tag n'existe pas dans les données")
                     self.tagAndValues[normalTag] = [""] * num_rows
-                    Log.Message(f"Tag vide créé pour {normalTag}")
             
-            # Afficher un résumé des tags trouvés
-            Log.Message("\n=== RÉSUMÉ DES TAGS TROUVÉS ===")
-            Log.Message(f"Nombre total de tags trouvés: {len(self.tagAndValues)}")
-            for tag in sorted(self.tagAndValues.keys()):
-                empty_count = sum(1 for v in self.tagAndValues[tag] if not v)
-                if empty_count > 0:
-                    Log.Message(f"- {tag}: {len(self.tagAndValues[tag])} valeurs, dont {empty_count} vides")
-                else:
-                    Log.Message(f"- {tag}: {len(self.tagAndValues[tag])} valeurs, toutes non vides")
-            
-            Log.Message("\n=== FIN DE LA LECTURE DU FICHIER EXCEL ===")
-            Log.Message(f"Lecture directe du fichier Excel terminée avec succès. {len(self.tagAndValues)} tags traités.")
+            Log.Message("\n=== FIN DE LA LECTURE DIRECTE DU FICHIER EXCEL ===")
+            Log.Message(f"Lecture directe terminée. {len(self.tagAndValues)} tags traités.")
+
+            if not self._build_containers_from_tag_values():
+                workbook.Close(False)
+                self.CloseExcel()
+                return False
+
+            workbook.Close(True)
+            self.CloseExcel()
             return True
             
         except Exception as e:
@@ -863,6 +1041,13 @@ class ValueCollector :
         if not container:
             Log.Error("Container invalide pour la configuration des tags")
             return False
+        
+        # Fournir le container courant au Writer (pour traitements d'images dépendants du SN)
+        try:
+            import Writer
+            Writer.SetCurrentContainer(container)
+        except Exception as e:
+            Log.Warning(f"Impossible de définir le container courant dans Writer: {e}")
         
         Writer.columnContentMap.clear()
         Writer.replacementMap.clear()
@@ -1059,6 +1244,56 @@ class ValueCollector :
         Log.Message("La recherche automatique de plan est désactivée.")
         return True
 
+    def _get_container_lt(self, container) -> str:
+        if hasattr(container, "tagAndValues"):
+            for key in ("LT", "**LT**", "LANCEMENT", "**LANCEMENT**"):
+                if key in container.tagAndValues and container.tagAndValues[key]:
+                    return str(container.tagAndValues[key])
+        if hasattr(container, "LT") and container.LT:
+            return str(container.LT)
+        return ""
+
+    def _find_sn_from_work_dir(self, launch_number: str):
+        """
+        Repli : SN détectés dans les noms de fichiers/dossiers du LT courant,
+        croisés avec les SN présents dans le fichier Excel.
+        """
+        work_dir = Settings.GetConfigValueString("paths", "root_work_dir")
+        if not work_dir or not os.path.isdir(work_dir):
+            return []
+
+        launch_norm = _normalize_lt(launch_number)
+        if launch_norm not in _normalize_lt(work_dir):
+            return []
+
+        sn_pattern = re.compile(r"SN\s*(\d+-\d+-\d+)", re.IGNORECASE)
+        folder_sns = set()
+        for root, dirs, files in os.walk(work_dir):
+            for name in list(dirs) + list(files):
+                for match in sn_pattern.finditer(name):
+                    folder_sns.add(match.group(1))
+
+        if not folder_sns:
+            return []
+
+        excel_by_sn = {str(c.SN).strip(): c.SN for c in self.containers}
+        matched = []
+        for folder_sn in sorted(folder_sns):
+            if folder_sn in excel_by_sn:
+                matched.append(excel_by_sn[folder_sn])
+                continue
+            for excel_sn, original in excel_by_sn.items():
+                if excel_sn.replace(" ", "") == folder_sn.replace(" ", ""):
+                    matched.append(original)
+                    break
+
+        if matched:
+            Log.Message(
+                f"[LT] Repli dossier {work_dir} : {len(matched)} SN trouvé(s) "
+                f"(absents du filtre colonne LT dans Excel)"
+            )
+        return matched
+
     def FindSNFromLT(self, launch_number) :
         """
         Cherche tous les SN associés à un numéro de lancement.
@@ -1067,43 +1302,48 @@ class ValueCollector :
         Returns:
             list: Liste des SN trouvés pour ce LT
         """
-        # Vérifier que le LT est valide
-        if not launch_number or launch_number == "":
+        launch_number = _normalize_lt(launch_number)
+        if not launch_number:
             Log.Error("Le numéro de lancement est vide")
             return []
-        if not launch_number.replace(' ', '').startswith("LT"):
-            Log.Error("Le numéro de lancement doit commencer par 'LT'")
-            return []
-        if not launch_number.replace(' ', '')[2:].isdigit():
+        if not launch_number[2:].isdigit():
             Log.Error("Le numéro de lancement doit être suivi de chiffres")
             return []
-        # S'assurer que les données sont chargées
+
         if not self.containers:
             Log.Warning("Aucune donnée chargée, tentative de lecture du fichier Excel")
             if not self.FetchValuesInExcel():
                 return []
-        # Chercher dans les containers existants
+
         sns = []
         for container in self.containers:
-            container_lt = None
-            if hasattr(container, 'tagAndValues') and 'LT' in container.tagAndValues:
-                container_lt = container.tagAndValues['LT']
-            elif hasattr(container, 'LT'):
-                container_lt = container.LT
-            # Nettoyer les espaces
-            container_lt_clean = str(container_lt).replace(' ', '').strip() if container_lt else ''
-            launch_number_clean = str(launch_number).replace(' ', '').strip()
-            # Ajouter "LT" si manquant
-            if container_lt_clean and not container_lt_clean.startswith("LT"):
-                container_lt_clean = "LT" + container_lt_clean
-            # DEBUG : Afficher la comparaison
-            Log.Message(f"Comparaison filtrage : container_lt_clean='{container_lt_clean}' (len={len(container_lt_clean)}) vs launch_number_clean='{launch_number_clean}' (len={len(launch_number_clean)})")
-            if container_lt_clean.replace("LT", "").lstrip("0") == launch_number_clean.replace("LT", "").lstrip("0"):
+            container_lt = self._get_container_lt(container)
+            if _lt_numbers_equal(container_lt, launch_number):
                 sns.append(container.SN)
+
         if not sns:
-            Log.Warning(f"Aucun SN trouvé pour le numéro de lancement {launch_number}")
+            lts_in_file = sorted({
+                _normalize_lt(self._get_container_lt(c))
+                for c in self.containers
+                if self._get_container_lt(c)
+            })
+            if lts_in_file:
+                preview = ", ".join(lts_in_file[:12])
+                if len(lts_in_file) > 12:
+                    preview += f", ... ({len(lts_in_file)} LT au total)"
+                Log.Warning(
+                    f"Aucun SN avec LT {launch_number} dans Excel. "
+                    f"LT présents dans le fichier : {preview}"
+                )
+            else:
+                Log.Warning(
+                    f"Aucun SN avec LT {launch_number} dans Excel "
+                    f"(colonne LT vide ou absente — repli dossier LT)"
+                )
+            sns = self._find_sn_from_work_dir(launch_number)
         else:
             Log.Message(f"SN trouvés pour {launch_number} : {', '.join(sns)}")
+
         return sns
 
 

@@ -20,7 +20,7 @@ def Init(tabBar : TkinterClasses.TabBar) :
     tab = TkinterClasses.Tab(tabBar, "Paths", OnOpen)
     
     # builds the panel
-    global displayMeasurementPath, displayTemplatePath, displayWorkPath
+    global displayMeasurementPath, displayTemplatePath, displayWorkPath, displayPopplerPath
 
     chooseMeasurementPath = tk.Button(tab, text="choix chemin mesures", command=ChooseMeasurementPath)
     chooseMeasurementPath.grid(column=1, row=3, columnspan=2, rowspan=1)
@@ -41,6 +41,12 @@ def Init(tabBar : TkinterClasses.TabBar) :
 
     displayWorkPath = TkinterClasses.StorageLabel(tab, "paths", "root_work_dir", wrapCount=100, wrapChar="/")
     displayWorkPath.grid(column=3, row=5, columnspan=5, rowspan=1)
+
+    choosePopplerPath = tk.Button(tab, text="choix chemin Poppler", command=ChoosePopplerPath)
+    choosePopplerPath.grid(column=1, row=6, columnspan=2, rowspan=1)
+
+    displayPopplerPath = TkinterClasses.StorageLabel(tab, "paths", "poppler_path", wrapCount=100, wrapChar="/")
+    displayPopplerPath.grid(column=3, row=6, columnspan=5, rowspan=1)
 
     
     logWindow = TkinterClasses.OutputTextWindow(tab)
@@ -96,7 +102,7 @@ def ChooseMeasurementPath() :
         displayMeasurementPath.SetValue("N/A")
         return
 
-    if not val.endswith(".xlsx") and not val.endswith(".xlsm") :
+    if not val.lower().endswith((".xlsx", ".xlsm")) :
         Log.Error(f" Mauvaise extension pour le fichier sélectionné : {val}")
         Log.Error("le fichier n'a pas l'extension '.xlsx' ou '.xlsm'")
         displayMeasurementPath.SetValue("N/A")
@@ -174,3 +180,26 @@ def ChooseWorkDirectory() :
         return
     
     displayWorkPath.SetValue(val)
+
+
+def ChoosePopplerPath() :
+    val = fd.askdirectory(
+        title="Sélectionner Poppler (dossier bin ou racine poppler-XX)"
+    )
+
+    if val == "":
+        return
+
+    import ImageReader
+    resolved = ImageReader._resolve_poppler_bin(val)
+    if not resolved:
+        Log.Error(
+            "Dossier Poppler invalide : pdftoppm.exe introuvable. "
+            "Choisissez le dossier .../Library/bin ou la racine de l'archive Poppler."
+        )
+        displayPopplerPath.SetValue("N/A")
+        return
+
+    displayPopplerPath.SetValue(resolved)
+    ImageReader.GetPopplerPath(force_refresh=True)
+    Log.Message(f"[POPPLER] Chemin enregistré : {resolved}")

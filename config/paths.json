@@ -1,7 +1,11 @@
 {
-	"generator_out_path": "PV",
-	"measurement_file": "X:/Tracabilite/RCSPE-QUANT25.085/mesures RCSPE-QUANT25.085.xlsx",
-	"template_file_path": "X:/Tracabilite/RCSPE-QUANT25.085/F565-Ind A-Fiche mesure cordons Quantel.docx",
-	"root_work_dir": "X:\\Tracabilite\\RCSPE-QUANT25.085\\LT2500726",
-	"template_file": null
+	"generator_out_path": "RE",
+	"measurement_file": "X:/Tracabilite/RETA-AGS24.134C/mesures OHDOP 24.134C DRB202609XX.xlsm",
+	"template_file_path": "X:/Tracabilite/RETA-AGS24.134C/F512 - ind D - OHDOP_RE 24.134+signature.docx",
+	"root_work_dir": "X:/Tracabilite/RETA-AGS24.134C/LT2600359",
+	"template_file": null,
+	"dichroic_root": "X:\\Tracabilite",
+	"dichroic_workbook": null,
+	"dichroic_filename_hint": "suivi traitement",
+	"poppler_path": null
 }

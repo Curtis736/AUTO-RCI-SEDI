@@ -17,6 +17,8 @@ if errorlevel 1 (
     set "PYTHON_CMD=python"
 )
 
+REM Mode d'emploi : ouvrir_mode_emploi.bat ou MODE_EMPLOI.html
+
 REM Lance l'application
 "%PYTHON_CMD%" Interface.py
 

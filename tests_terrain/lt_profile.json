@@ -1,0 +1,14 @@
+{
+	"label": "RETA-697-HOI-23.199 / LT2400182",
+	"LT": "LT2400182",
+	"num_plan": "23.199",
+	"form": "F487 D",
+	"out_file_category": "RCI",
+	"root_work_dir": "test-unitaire/RETA-697-HOI-23.199/LT2400182",
+	"measurement_file": "test-unitaire/RETA-697-HOI-23.199/mesures HOI 23.199.xlsx",
+	"dichroic_root": "test-unitaire/RETA-697-HOI-23.199",
+	"dichroic_filename_hint": "suivi traitement",
+	"generator_out_path": "_TESTS_SORTIE",
+	"image_folder": "test-unitaire/LT2500543/DICHRO_GRAND_CHAMP",
+	"sample_sn": "25-20-07"
+}

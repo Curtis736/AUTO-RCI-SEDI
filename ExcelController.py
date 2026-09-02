@@ -8,6 +8,8 @@ import PIL.ImageGrab
 import pythoncom
 import time
 import traceback
+import uuid
+import re
 
 import Log
 
@@ -84,16 +86,15 @@ def OpenExcel(filePath = None):
                 return False
         
         # Définir les propriétés avec gestion d'erreurs
+        # NB : on NE TOUCHE PLUS à la propriété .Visible pour éviter les erreurs
+        # de type "Property 'Excel.Application.Visible' can not be set" sur certains postes.
         try:
             __excelInstance.DisplayAlerts = False
-        except:
+        except Exception:
             Log.Warning("Impossible de désactiver les alertes Excel")
             
-        try:
-            __excelInstance.Visible = False
-        except:
-            Log.Warning("Impossible de cacher la fenêtre Excel")
-            # Continuer même si on ne peut pas cacher Excel
+        # On laisse Excel gérer tout seul sa visibilité pour éviter les crashs COM.
+        # Si besoin d'afficher Excel, cela pourra être fait manuellement par l'utilisateur.
             
         Log.Message("Instance Excel créée avec succès")
         
@@ -234,11 +235,16 @@ def __OpenWorkbookAndGiveObject(path : str) :
     """
 
     path = path.replace("/", "\\")
+    file_name = os.path.basename(path)
+    lower_path = path.lower()
 
     if not os.path.isfile(path) :
         Log.Error("[EXCELCONTROLLER] le chemin de workbook " + path + " est invalide")
         return None
-    if not path.endswith(".xlsx") and not path.endswith(".xlsm") :
+    if file_name.startswith("~$"):
+        Log.Warning("[EXCELCONTROLLER] fichier Excel temporaire ignoré : " + path)
+        return None
+    if not lower_path.endswith(".xlsx") and not lower_path.endswith(".xlsm") :
         Log.Error("[EXCELCONTROLLER] le fichier " + path + " n'est pas un workbook")
         return None
     
@@ -538,6 +544,52 @@ def FindTagInString(string : str, separator = "*") :
         
         return None
 
+def _normalize_excel_path(path: str) -> str:
+    if not path:
+        return ""
+    return os.path.normcase(os.path.normpath(path.replace("/", "\\")))
+
+
+def _make_chart_export_path(prefix: str = "GRAPH") -> str:
+    """Chemin PNG court (Excel Export échoue au-delà ~260 caractères)."""
+    ImageReader.Init()
+    return os.path.join(ImageReader.GetAbspathTempFolder(), f"{prefix}_{uuid.uuid4().hex}.png")
+
+
+def _export_chart_to_png(chart_obj, file_path: str) -> bool:
+    """Exporte une feuille graphique ou un Chart embarqué vers un PNG."""
+    try:
+        chart_obj.Export(file_path)
+        return os.path.isfile(file_path) and os.path.getsize(file_path) > 0
+    except Exception as export_err:
+        Log.Verbose(f"[EXCELCONTROLLER] Export PNG échoué: {export_err}")
+        return False
+
+
+def _charts_from_worksheet(worksheet):
+    if hasattr(worksheet, "ChartArea"):
+        return [worksheet]
+    charts = []
+    try:
+        for shape in worksheet.Shapes:
+            try:
+                if hasattr(shape, "Chart"):
+                    charts.append(shape.Chart)
+            except Exception:
+                pass
+    except Exception as e:
+        Log.Verbose(f"[EXCELCONTROLLER] impossible d'énumérer les shapes : {e}")
+    return charts
+
+
+def _reference_search_fields(path, serie_name_raw, sheetName, chart_title_raw):
+    fields = [serie_name_raw, sheetName, chart_title_raw, os.path.basename(path)]
+    for part in re.split(r"[\\/]+", path):
+        if part and part not in fields:
+            fields.append(part)
+    return fields
+
+
 def ConvertToPdf(workbookName : str, sheetName : str, outfile : str) :
     if not workbookName in __openedWorkbooksNames :
         Log.Error("[EXCELCONTROLLER] : no such workbook as " + workbookName)
@@ -562,11 +614,13 @@ def FindGraphInExcelFile(path : str, legendKeywords : list = None, titleKeywords
         Log.Error("[EXCELCONTROLLER] : excel n'est pas ouvert")
         return None
 
-    path = path.replace("/", "\\")
+    path = os.path.normpath(path.replace("/", "\\"))
+    path_key = _normalize_excel_path(path)
     print("path to the excel workbook :", path, "and currently opened : ", __openedWorkbooksPaths)
-    if path in __openedWorkbooksPaths :
+    opened_keys = [_normalize_excel_path(p) for p in __openedWorkbooksPaths]
+    if path_key in opened_keys :
         print("reusing workbook")
-        workbook = __openedWorkbooks[__openedWorkbooksPaths.index(path)]
+        workbook = __openedWorkbooks[opened_keys.index(path_key)]
     else :
         try :
             print("reopening workbook")
@@ -595,16 +649,30 @@ def FindGraphInExcelFile(path : str, legendKeywords : list = None, titleKeywords
     Log.Verbose("Valid sheet names are " + str(validSheetNames))
     result = ExcelGraphLookupResult()
 
+    def _normalize(value: str) -> str:
+        if value is None:
+            return ""
+        return re.sub(r"[^A-Z0-9]", "", str(value).upper())
+
     # Préparer les variantes de légende à chercher
     legend_variants = set()
     if legendKeywords:
         for key in legendKeywords:
             key = str(key).replace("S/N", "SN").replace(" ", "")
-            legend_variants.add(key.upper())
-            legend_variants.add(key.replace("SN", "S/N ").upper())
-            legend_variants.add(key.replace("SN", "SN ").upper())
-            legend_variants.add(key.replace("SN", "S/N").upper())
-            legend_variants.add(key.replace("SN", "SN").upper())
+            legend_variants.add(_normalize(key))
+            legend_variants.add(_normalize(key.replace("SN", "S/N ")))
+            legend_variants.add(_normalize(key.replace("SN", "SN ")))
+            legend_variants.add(_normalize(key.replace("SN", "S/N")))
+            legend_variants.add(_normalize(key.replace("SN", "SN")))
+
+    title_variants = set()
+    if titleKeywords:
+        for key in titleKeywords:
+            normalized = _normalize(str(key))
+            if normalized:
+                title_variants.add(normalized)
+    
+    exported_paths = []
     
     for sheetName in validSheetNames :
         worksheet = workbook.Sheets(sheetName)
@@ -613,25 +681,60 @@ def FindGraphInExcelFile(path : str, legendKeywords : list = None, titleKeywords
         # it is possible to have Chart object in the sheet collection, since graphs can be put as worksheet in excel
         # However the COM interface doesn't allow to obtain a static type
         # So the only method yet is to test if the object has an attribute only a Chart object would have
-        charts = None
-        if hasattr(worksheet, "ChartArea") :
-            charts = [worksheet]
-        else :
-            # otherwise it is a normal worksheet and we search for Charts in it
-            charts = [shape.Chart for n, shape in enumerate(worksheet.Shapes)]
+        charts = _charts_from_worksheet(worksheet)
+        if not charts:
+            continue
         for chart in charts :
             try:
                 seriesCollection = chart.SeriesCollection()
                 Log.Verbose(f"checking chart legend {[serie.Name for serie in seriesCollection]}")
+                chart_matched = False
                 for serie in seriesCollection :
-                    serie_name = str(serie.Name).replace(" ", "").upper()
+                    if chart_matched:
+                        break
+                    serie_name_raw = str(serie.Name)
+                    serie_name = _normalize(serie_name_raw)
                     # Vérifier si une des variantes est CONTENUE dans le nom de la série
                     for variant in legend_variants:
-                        if variant in serie_name:
+                        if variant and variant in serie_name:
+                            if title_variants:
+                                chart_title_raw = ""
+                                try:
+                                    if hasattr(chart, "HasTitle") and chart.HasTitle:
+                                        chart_title_raw = str(chart.ChartTitle.Text)
+                                except Exception:
+                                    chart_title_raw = ""
+
+                                searchable_fields = _reference_search_fields(
+                                    path, serie_name_raw, sheetName, chart_title_raw
+                                )
+                                searchable_normalized = [_normalize(field) for field in searchable_fields if field]
+                                has_title_match = any(
+                                    title_variant in field
+                                    for title_variant in title_variants
+                                    for field in searchable_normalized
+                                )
+                                if not has_title_match:
+                                    continue
+
+                            Log.Message(
+                                "[EXCELCONTROLLER] Graphique retenu | "
+                                f"fichier='{path}' | feuille='{sheetName}' | serie='{serie_name_raw}' | "
+                                f"filtre_sn='{variant}' | filtres_ref='{list(title_variants) if title_variants else []}'"
+                            )
+
                             # On a trouvé le graphique correspondant
-                            chart.Copy()
-                            filePath = os.path.join(ImageReader.GetAbspathTempFolder(), "GRAPH.png")
-                            chart.Export(filePath)
+                            ImageReader.Init()
+                            filePath = _make_chart_export_path("GRAPH")
+                            try:
+                                if not _export_chart_to_png(chart, filePath):
+                                    raise RuntimeError("export PNG vide ou échec")
+                            except Exception as export_err:
+                                Log.Error(
+                                    f"[EXCELCONTROLLER] échec export graphique "
+                                    f"(feuille='{sheetName}', série='{serie_name_raw}') : {export_err}"
+                                )
+                                continue
                             #image = PIL.ImageGrab.grabclipboard()
                             #Log.Verbose(f"got from clipboard {image}")
                             
@@ -639,13 +742,23 @@ def FindGraphInExcelFile(path : str, legendKeywords : list = None, titleKeywords
                             result.filePath = filePath
                             global lastGraphResults
                             lastGraphResults = result
-                            return filePath
+                            
+                            exported_paths.append(filePath)
+                            chart_matched = True
+                            break
             except Exception as e:
                 Log.Verbose(f"failed to read sheet : {str(e)} {traceback.format_exc()}")
                 continue
             if pulseCallback != None :
                 pulseCallback()
-    Log.Verbose("no chart found with the correct values : " + str(sheetKeywords) + str(legendKeywords) + str(titleKeywords))
+                
+    if len(exported_paths) > 0:
+        return exported_paths
+    
+    Log.Warning(
+        "[EXCELCONTROLLER] Aucun graphique exporté dans "
+        f"'{path}' | légendes={legendKeywords} | ref={titleKeywords} | feuilles={sheetKeywords}"
+    )
     return None
 
 def FindGraphInExcelFileFolder(folderPath : str, titleKeywords : list = None, legendKeywords : list = None, sheetKeywords : list = None, pulseCallback = None) :
@@ -670,12 +783,56 @@ def FindGraphInExcelFileFolder(folderPath : str, titleKeywords : list = None, le
                 # when an excel file is opened, excel will often create a temporary file in the same directory.
                 # these files have the same name as the original file but start with ~$.
                 # trying to open them would cause an error.
-                if element.endswith(".xlsx") and not element.startswith("~$") :
+                element_lower = element.lower()
+                if (element_lower.endswith(".xlsx") or element_lower.endswith(".xlsm")) and not element.startswith("~$") :
                     if FindGraphInExcelFile(path + "/" + element, titleKeywords, legendKeywords, sheetKeywords, pulseCallback) :
                         return True
                 continue
     return False
 
+
+def ExportFirstChartFromSheet(workbookPath : str, sheetName : str) :
+    """
+    Exporte le premier graphique trouvé sur la feuille demandée d'un classeur Excel.
+    Retourne le chemin du PNG exporté, ou None en cas d'erreur.
+    """
+    try :
+        if __excelInstance == None :
+            Log.Error("[EXCELCONTROLLER] : excel n'est pas ouvert")
+            return None
+        workbookPath = workbookPath.replace("/", "\\")
+        # Ouvrir ou réutiliser le classeur
+        if workbookPath in __openedWorkbooksPaths :
+            workbook = __openedWorkbooks[__openedWorkbooksPaths.index(workbookPath)]
+        else :
+            workbook = __OpenWorkbookAndGiveObject(workbookPath)
+            if workbook is None :
+                return None
+        # Obtenir la feuille
+        try :
+            worksheet = workbook.Sheets(sheetName)
+        except Exception as e :
+            Log.Error(f"[EXCELCONTROLLER] : feuille '{sheetName}' introuvable dans {workbookPath}")
+            Log.Error(str(e))
+            return None
+        # Récupérer les graphiques présents (feuille graphique ou shapes)
+        charts = _charts_from_worksheet(worksheet)
+        if len(charts) == 0 :
+            Log.Error(f"[EXCELCONTROLLER] : aucun graphique trouvé dans la feuille '{sheetName}'")
+            return None
+        # Exporter le premier graphique
+        try :
+            # Générer un nom de fichier unique pour le graphique dichroïque
+            filePath = _make_chart_export_path("DICHRO_GRAPH")
+            if not _export_chart_to_png(charts[0], filePath):
+                raise RuntimeError("export PNG vide ou échec")
+            return filePath
+        except Exception as e :
+            Log.Error(f"[EXCELCONTROLLER] : échec export graphique : {str(e)}")
+            return None
+    except Exception as e :
+        Log.Error(f"[EXCELCONTROLLER] : erreur ExportFirstChartFromSheet : {str(e)}")
+        return None
 
 def PutImageInSheet(workBookName : str, sheetName : str, pathToImage : str, column : int, row : int, imageSize : tuple, width : int = 500) :
     """

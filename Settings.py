@@ -66,10 +66,12 @@ def LoadConfig(name : str, reload = True) :
             __loadedFiles[name] = dictionary
 
             Log.Log(Log.Lvl.VERB, "loaded config file " + filePath)
+            return True
         
         except Exception as e :
             
             Log.Error(f"Cannot open config file {name} :\n{str(e)}")
+            __loadedFiles[name] = {}
             return False
 
 """

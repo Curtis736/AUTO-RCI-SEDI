@@ -8,6 +8,7 @@ import ExcelController
 
 import Log
 import Settings
+import poppler_setup
 
 
 CACHE_PATH = "tmpimg"
@@ -18,6 +19,15 @@ __cachedImages = []
 def Init() :
 
     os.makedirs(CACHE_PATH, exist_ok=True)
+    GetPopplerPath()
+
+
+def GetPopplerPath(force_refresh: bool = False):
+    return poppler_setup.get_poppler_bin_path(force_refresh=force_refresh, allow_download=True)
+
+
+def _resolve_poppler_bin(candidate: str):
+    return poppler_setup.resolve_poppler_bin(candidate)
 
 # returns the full path to the temp image folder
 def GetAbspathTempFolder() :
@@ -61,11 +71,21 @@ def LoadPdfFile(pathToFile : str) :
 
     images = []
 
+    poppler_path = GetPopplerPath()
+    convert_kwargs = {"use_cropbox": True}
+    if poppler_path:
+        convert_kwargs["poppler_path"] = poppler_path
+
     try :
-        images = convert_from_path(pathToFile, poppler_path="X:/Production/4_Public/THIBAUD/poppler-24.02.0/Library/bin", use_cropbox=True)
+        images = convert_from_path(pathToFile, **convert_kwargs)
     except Exception as e:
         Log.Error("failed open pdf as images")
         Log.Error(str(e))
+        if not poppler_path:
+            Log.Error(
+                "Poppler non disponible sur ce poste. "
+                "Relancez install_modules.bat ou vérifiez la connexion Internet au premier lancement."
+            )
         return None
     
     if len(images) == 0 :
@@ -114,13 +134,15 @@ def GetImagePath(imageAbsPath : str) :
     if not os.path.isfile(imageAbsPath) :
         Log.Error(f"Le fichier image {imageAbsPath} n'existe pas")
         return None
-    
-    if imageAbsPath.endswith(".png") :
+
+    ext = os.path.splitext(imageAbsPath)[1].lower()
+
+    if ext in (".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff") :
         return imageAbsPath
-    
-    if imageAbsPath.endswith(".jpg") :
-        return imageAbsPath
-    
-    if imageAbsPath.endswith(".pdf") :
+
+    if ext == ".pdf" :
         return LoadPdfFile(imageAbsPath)
+
+    Log.Error(f"Extension non prise en charge pour {imageAbsPath}")
+    return None
     

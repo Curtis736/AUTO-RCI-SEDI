@@ -36,6 +36,16 @@ columnContentMap = {}
 # tags as key, and --- as value
 imageMap = {}
 
+currentContainer = None
+
+def SetCurrentContainer(container):
+    """
+    Définit le container courant (SN, tags...) pour permettre le traitement
+    des tags d'images personnalisés dépendants du SN.
+    """
+    global currentContainer
+    currentContainer = container
+    return True
 
 def Open(path) :
     global document, pathToDocument, documentDefined
@@ -94,6 +104,15 @@ def Save(filePath : str) :
             filePath = os.path.abspath(filePath)
             
         Log.Message(f"SAUVEGARDE - Tentative de sauvegarde du document à: {filePath}")
+        
+        # Traiter les tags d'images personnalisés (ex: §§DICHRO_GRAPH§§) avant la sauvegarde
+        try:
+            if currentContainer is not None:
+                from CustomImageTagProcessor import process_custom_image_tags
+                work_dir = Settings.GetConfigValueString("paths", "root_work_dir")
+                process_custom_image_tags(document, work_dir, currentContainer)
+        except Exception as pre_save_img_err:
+            Log.Warning(f"Traitement des tags d'images avant sauvegarde: {str(pre_save_img_err)}")
         
         # S'assurer que le répertoire de destination existe
         outDir = os.path.dirname(filePath)
@@ -801,6 +820,7 @@ def ReplaceTagWithImageInText(tag, image_paths, titles=None):
 # !! can change the paragraph alignment, make sure to tell it in the doc !!
 def ReplaceTagWithImage(paragraphs, tag, pics, titles) :
     x, y, z = 0, 0, 0
+    tag_replaced = False  # Pour s'assurer qu'on ne remplace le tag qu'une seule fois
 
     Log.Verbose("Writer was requested to place " + str(pics) + " at " + tag)
 
@@ -820,9 +840,12 @@ def ReplaceTagWithImage(paragraphs, tag, pics, titles) :
                 if letter == "§" :
                     scanProgress += 1
                     if scanProgress >= 4 :
-                        if buffer == tag :
+                        if buffer == tag and not tag_replaced :
+                            # Remplacer le tag UNE SEULE FOIS dans tout le document
                             FindAndReplaceInParagraphs(document.paragraphs, FormatTagForImagePlacement(tag), "")
-                            #paragraphs[x].runs[y].text = paragraphs[x].runs[y].text.replace("§§" + buffer + "§§", "")
+                            tag_replaced = True
+                            
+                            # Ajouter toutes les images dans le paragraphe courant
                             for i in range(len(pics)) :
                                 # Modification: ne pas ajouter le titre avant l'image
                                 run = AddRunInSameStyle(paragraphs[x], "")
@@ -832,7 +855,9 @@ def ReplaceTagWithImage(paragraphs, tag, pics, titles) :
                                 #if paragraphs[x].alignment == WD_ALIGN_PARAGRAPH.JUSTIFY :
                                 # left alignment is forced
                                 paragraphs[x].alignment = WD_ALIGN_PARAGRAPH.LEFT
-
+                            
+                            # Sortir de toutes les boucles une fois le tag remplacé
+                            break
                             
                 elif scanProgress == 2 :
                     buffer += letter
@@ -841,7 +866,11 @@ def ReplaceTagWithImage(paragraphs, tag, pics, titles) :
                     buffer = ""
                 
                 z += 1
+            if tag_replaced:
+                break
             y += 1
+        if tag_replaced:
+            break
         x += 1
     
     
@@ -1112,18 +1141,85 @@ def AddImagesFromFolder(folder_path, tag_content, sn, filter_pattern):
         Log.Message(f"Remplacement du tag {tag_to_replace} par {len(sn_images)} image(s)")
 
         import ImageReader
-        # Convert all the image files found into PNG images, temporarily
+        # Contrainte anti-collision: si plusieurs références partagent le même SN,
+        # on filtre le graphique Excel aussi avec la référence du container courant.
+        reference_keywords = []
+        try:
+            global currentContainer
+            if currentContainer and hasattr(currentContainer, "tagAndValues"):
+                ref_keys = ["REF_SEDI", "**REF_SEDI**", "REF_CLIENT", "**REF_CLIENT**", "NUMPLAN", "**NUMPLAN**"]
+                for key in ref_keys:
+                    value = currentContainer.tagAndValues.get(key)
+                    if value:
+                        value_str = str(value).strip()
+                        if value_str and value_str not in reference_keywords:
+                            reference_keywords.append(value_str)
+                            # Ajouter une version "numéro de plan" éventuelle, ex: 23.157C
+                            plan_match = re.search(r"\d+\.\d+[A-Z]?", value_str.upper())
+                            if plan_match:
+                                plan_ref = plan_match.group(0)
+                                if plan_ref not in reference_keywords:
+                                    reference_keywords.append(plan_ref)
+        except Exception as ref_err:
+            Log.Warning(f"Impossible de préparer les mots-clés de référence pour le filtre graphique: {ref_err}")
+
+        excel_candidates = [p for p in sn_images if p.lower().endswith((".xlsx", ".xlsm"))]
+        if excel_candidates:
+            Log.Message(
+                f"[WRITER] Recherche de courbe(s) Excel pour SN{sn} | "
+                f"fichier(s)={len(excel_candidates)} | "
+                f"mots-clés référence={reference_keywords if reference_keywords else 'AUCUN'}"
+            )
+
+        legend_keywords = [f"S/N{sn}", f"S/N {sn}", f"SN{sn}", f"SN {sn}"]
+
+        def _export_curves_from_excel(excel_path):
+            import ExcelController
+            ExcelController.OpenExcel()
+            title_filter = reference_keywords if reference_keywords else None
+            paths = ExcelController.FindGraphInExcelFile(
+                excel_path,
+                legendKeywords=legend_keywords,
+                titleKeywords=title_filter,
+            )
+            if paths is None and title_filter:
+                Log.Warning(
+                    f"[WRITER] Aucune courbe avec filtre référence dans '{excel_path}', "
+                    f"nouvelle tentative sur le SN seul"
+                )
+                paths = ExcelController.FindGraphInExcelFile(
+                    excel_path,
+                    legendKeywords=legend_keywords,
+                    titleKeywords=None,
+                )
+            return paths
+
+        new_sn_images = []
+        new_titles = []
         for i in range(len(sn_images)) :
-            if sn_images[i].endswith(".xlsx") or sn_images[i].endswith(".xlsm") :
-                import ExcelController
-                ExcelController.OpenExcel()
-                path = ExcelController.FindGraphInExcelFile(sn_images[i], legendKeywords=[f"S/N{sn}", f"S/N {sn}", f"SN{sn}", f"SN {sn}"])
-                if path != None : sn_images[i] = path
-                else : Log.Error(f"Ne peut pas charger image {sn_images[i]}")
+            if sn_images[i].lower().endswith((".xlsx", ".xlsm")) :
+                paths = _export_curves_from_excel(sn_images[i])
+                if paths != None :
+                    if isinstance(paths, str):
+                        paths = [paths]
+                    for path in paths:
+                        Log.Message(f"[WRITER] Courbe exportée pour SN{sn} depuis '{sn_images[i]}' vers '{path}'")
+                        new_sn_images.append(path)
+                        new_titles.append(titles[i])
+                else:
+                    Log.Error(
+                        f"[WRITER] Courbe Excel introuvable pour SN{sn} dans '{sn_images[i]}' "
+                        f"(vérifier légende série S/N{sn} et graphiques embarqués)"
+                    )
             else :
                 path = ImageReader.GetImagePath(sn_images[i])
-                if path != None : sn_images[i] = path
+                if path != None :
+                    new_sn_images.append(path)
+                    new_titles.append(titles[i])
                 else : Log.Error(f"Ne peut pas charger image {sn_images[i]}")
+        
+        sn_images = new_sn_images
+        titles = new_titles
         
         # Utiliser la fonction existante pour remplacer le tag par les images
         Log.Verbose(f"Chemins des images : {sn_images}")

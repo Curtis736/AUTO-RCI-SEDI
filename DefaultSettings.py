@@ -14,11 +14,20 @@ DEFAULT_THEME = {
 }
 
 DEFAULT_PATHS = {
-    
+    "poppler_path": None,
 }
 
 DEFAULT_FIELDS = {
-    
+    "LT": "",
+    "form": "",
+    "out_file_category": "RCI",
+    "generator_out_filename": "**REF_SEDI**_SN**SN**_RCI",
+    "file_reaction_mode": "dupliquer",
+    "num_plan": None,
+    "TITREPLAN": "Titre du Plan",
+    "pdf_input_path": "",
+    "pdf_necessary": None,
+    "pdf_replace": None,
 }
 
 def VerifySettingsCompleteness() :

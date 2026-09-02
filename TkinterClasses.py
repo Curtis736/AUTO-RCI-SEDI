@@ -246,7 +246,6 @@ class StorageDropdown(StorageField) :
 
 		# the field
 		self.field = ttk.Combobox(self, textvariable=self.stringVar, values=values, style="SD.TCombobox")
-		print(f"état {self.field.state()}")
 
 		self.field.pack(side=tk.BOTTOM)
 
@@ -254,7 +253,15 @@ class StorageDropdown(StorageField) :
 	
 	def SaveValue(self) :
 		super().SaveValue()
-		print(f"état {self.field.state()}")
+		# Nécessaire car trace_add peut être appelé avant que self.field soit initialisé
+		if self.field is None :
+			return
+		# Garder compatibilité pour les versions qui utilisent state()
+		if hasattr(self.field, "state") :
+			try :
+				self.field.state()
+			except Exception :
+				pass
 
 	def GetList(self) :
 		return self.__values

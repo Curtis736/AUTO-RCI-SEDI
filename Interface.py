@@ -230,7 +230,11 @@ except Exception as e:
         print(f"Erreur lors de la fermeture des ressources: {str(close_err)}")
     
     try :
-        OnClose()
+        if "root" in globals() and root.winfo_exists():
+            OnClose()
+        else:
+            Settings.SaveSettings()
+            ExcelController.CloseExcel()
     except Exception as e :
         print(e)
         

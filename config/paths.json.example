@@ -1,0 +1,11 @@
+{
+	"generator_out_path": "RE",
+	"measurement_file": "X:/Tracabilite/RETA-XXX/mesures OHDOP XXX.xlsm",
+	"template_file_path": "X:/Tracabilite/RETA-XXX/F512 - ind D - OHDOP_RE XXX+signature.docx",
+	"root_work_dir": "X:/Tracabilite/RETA-XXX/LT0000000",
+	"template_file": null,
+	"dichroic_root": "X:\\Tracabilite",
+	"dichroic_workbook": null,
+	"dichroic_filename_hint": "suivi traitement",
+	"poppler_path": null
+}

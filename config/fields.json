@@ -1,11 +1,12 @@
 {
-	"LT": "LT2500726",
-	"form": "F565 A",
-	"out_file_category": "PV",
-	"generator_out_filename": "**REF_SEDI**_SN**SN**_PV",
-	"file_reaction_mode": "remplacer",
-	"num_plan": null,
+	"LT": "LT2600359",
+	"form": "F469 E",
+	"out_file_category": "RE",
+	"generator_out_filename": "**REF_SEDI**_SN**SN**_RE",
+	"file_reaction_mode": "dupliquer",
+	"num_plan": "26.043",
 	"TITREPLAN": "Titre du Plan",
-	"pdf_input_path": "X:/Tracabilite/RETA-TASDDM-712-23.004B/LT2500794/PV",
-	"pdf_necessary": null
+	"pdf_input_path": "X:\\Tracabilite\\RCT\u00b0-AGS23.157C\\LT2600582\\RE",
+	"pdf_necessary": null,
+	"pdf_replace": null
 }

@@ -117,6 +117,28 @@ class CustomImageTagProcessor:
         Args:
             tag_content (str): Contenu du tag à traiter
         """
+        # Cas spécial: graphique dichroïque depuis classeur Muxis
+        if tag_content.startswith("DICHRO_GRAPH"):
+            try:
+                from DocumentGenerator import GetDichroicGraphForSN
+                from Writer import ReplaceTagWithImageInText
+                # Export du graphique pour le SN courant
+                sn = getattr(self.container, "SN", None)
+                if not sn:
+                    Log.Error("[DICHRO] SN non défini pour l'insertion du graphique")
+                    return
+                png = GetDichroicGraphForSN(sn)
+                if not png:
+                    Log.Error(f"[DICHRO] Export graphique impossible pour SN{sn}")
+                    return
+                # Insérer l'image au tag courant
+                ReplaceTagWithImageInText(tag_content, [png])
+                self.processed_tags.add(tag_content)
+                return
+            except Exception as e:
+                Log.Error(f"[DICHRO] Erreur traitement tag §§{tag_content}§§ : {e}")
+                return
+
         # Analyser le tag
         folder_name, filter_pattern = self.parse_custom_tag(tag_content)
         
