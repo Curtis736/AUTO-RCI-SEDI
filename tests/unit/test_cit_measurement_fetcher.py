@@ -167,6 +167,52 @@ class TestCitMeasurementFetcher(unittest.TestCase):
         self.assertIsNone(channels[4])  # vide
         self.assertEqual(channels[5]["sn"], "146")
 
+    def test_filename_contains_sn_token_aware(self):
+        self.assertTrue(
+            cit._filename_contains_sn(
+                "_RETA-AGS24.134 SN26-17-12_ SN26-17-22_.xlsm", "26-17-12"
+            )
+        )
+        self.assertTrue(
+            cit._filename_contains_sn(
+                "_RETA-AGS24.134 SN26-17-12_ SN26-17-22_.xlsm", "26-17-22"
+            )
+        )
+        # Pas de faux positif : 26-17-12 ⊂ 26-17-120
+        self.assertFalse(
+            cit._filename_contains_sn(
+                "_RETA-AGS24.134 SN26-17-120_ SN26-17-126_.xlsm", "26-17-12"
+            )
+        )
+        # Acceptance OptoTest : segment court
+        self.assertTrue(
+            cit._filename_contains_sn(
+                "ohdop acceptance 30-31-32-33-35-12-06-22.XLS", "26-17-12"
+            )
+        )
+
+    def test_prefer_file_with_sn_in_filename_on_repass(self):
+        """
+        Re-passage : le même SN apparaît dans 2 fichiers data_traitee.
+        On doit prendre la valeur du fichier dont le nom contient le SN
+        (celui du graphique), pas le premier alphabétique.
+        """
+        # Fichier A (alphabétiquement premier) : SN en colonne mais PAS dans le nom
+        self._write_data_traitee_xlsm(
+            "_RETA-AGS24.134 SN26-17-09 SN26-17-140.xlsx",
+            headers=["RETA-AGS24.134 SN26-17-09", "RETA-AGS24.134 SN26-17-12"],
+            last_values=[0.01, 0.108],  # mauvaise valeur pour 12
+        )
+        # Fichier B : SN dans le nom (= graphique)
+        self._write_data_traitee_xlsm(
+            "_RETA-AGS24.134 SN26-17-30 SN26-17-12_ SN26-17-22.xlsx",
+            headers=["RETA-AGS24.134 SN26-17-30", "RETA-AGS24.134 SN26-17-12"],
+            last_values=[0.02, 0.018],  # bonne valeur pour 12
+        )
+        cit.clear_cit_index_cache()
+        value = cit.fetch_fin_cit_for_sn(self.tmp, "26-17-12", "RETA-AGS24.134C")
+        self.assertEqual(value, "0.018")
+
     def test_ensure_cit_aliases_still_work(self):
         tag_map = {"FIN_CIT": "0.052"}
         ValueFetcher.EnsureCitAliases(tag_map)

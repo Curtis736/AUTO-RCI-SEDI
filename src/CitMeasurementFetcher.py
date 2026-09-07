@@ -5,6 +5,9 @@ Source prioritaire : *.xlsm feuille data_traitee (dernière valeur du canal SN).
 Fallback : *acceptance*.XLS OptoTest (mapping SN ↔ CHn via le nom de fichier).
 
 Valeur retournée = abs(dernière mesure), arrondie à 3 décimales.
+
+En cas de re-passages du même OHDOP, on priorise le fichier dont le nom
+contient le S/N — le même que celui utilisé pour le graphique de la fiche.
 """
 
 from __future__ import annotations
@@ -115,7 +118,81 @@ def _header_matches(header, sn: str, ref: str) -> bool:
 
 def _is_temp_excel(filename: str) -> bool:
     name = os.path.basename(filename)
-    return name.startswith("~$")
+    return name.startswith("~$") or name.startswith("~$_")
+
+
+def _sn_tokens_from_filename(path: str) -> set:
+    """
+    Extrait les tokens SN normalisés depuis un nom de fichier thermal.
+    Ex. '_RETA-AGS24.134 SN26-17-12_ SN26-17-22_.xlsm' → {'26-17-12', '26-17-22', ...}
+         'ohdop acceptance 30-31-32-33-35-12-06-22.XLS' → {'30','31',...,'12','22'}
+    """
+    base = os.path.splitext(os.path.basename(path or ""))[0]
+    if not base:
+        return set()
+    raw_tokens = re.findall(r"(?i)(?:s/?n\s*)?(\d+(?:[-/]\d+)*)", base)
+    tokens = set()
+    for raw in raw_tokens:
+        if not raw:
+            continue
+        norm = _normalize_sn(raw)
+        if norm:
+            tokens.add(norm)
+        # Listes acceptance OptoTest : une seule chaîne 30-31-…-12 → éclater
+        # Les SN OHDOP tiretés font exactement 3 groupes (26-17-12) : ne pas éclater.
+        parts = re.split(r"[-/]", raw)
+        if len(parts) > 3:
+            for part in parts:
+                part_norm = _normalize_sn(part)
+                if part_norm:
+                    tokens.add(part_norm)
+    return tokens
+
+
+def _filename_contains_sn(path: str, sn: str) -> bool:
+    """
+    True si le SN apparaît comme token dans le nom de fichier
+    (aligné sur la sélection du graphique RE).
+    Évite les faux positifs 26-17-12 ⊂ 26-17-120.
+    Pour un SN OHDOP tireté (26-17-12), accepte aussi le segment court
+    dans les noms acceptance OptoTest (…-12-06-22…).
+    """
+    sn_norm = _normalize_sn(sn)
+    if not sn_norm:
+        return False
+    tokens = _sn_tokens_from_filename(path)
+    if sn_norm in tokens:
+        return True
+    if "-" in sn_norm:
+        short = sn_norm.split("-")[-1]
+        if short and short in tokens:
+            return True
+    return False
+
+
+def _cit_source_score(path: str, sn: str) -> float:
+    """
+    Score de priorité d'une source CIT.
+    Priorité 1 : SN présent dans le nom de fichier (= fichier du graphique).
+    Priorité 2 : date de modification (re-passage plus récent).
+    """
+    score = 0.0
+    if _filename_contains_sn(path, sn):
+        score += 1000.0
+    try:
+        score += os.path.getmtime(path) / 1e12
+    except OSError:
+        pass
+    return score
+
+
+def _merge_cit_entry(index: dict, priority: dict, key: tuple, value: str, path: str) -> None:
+    """Insère/remplace une mesure CIT si la source est meilleure."""
+    sn_h = key[0] if key else ""
+    score = _cit_source_score(path, sn_h)
+    if key not in index or score > priority.get(key, float("-inf")):
+        index[key] = value
+        priority[key] = score
 
 
 def _list_thermal_files(thermal_dir: str, extensions: tuple) -> list:
@@ -388,19 +465,22 @@ def build_cit_index(work_dir: str) -> dict:
     """
     Indexe toutes les mesures CIT d'un dossier LT en une passe
     (évite de rouvrir les mêmes .xlsm pour chaque SN).
+
+    Si un même SN apparaît dans plusieurs fichiers (re-passages),
+    on priorise le fichier dont le nom contient le SN — celui du graphique.
     """
     thermal_dir = _resolve_thermal_dir(work_dir)
     if not thermal_dir:
         return {}
 
     index = {}
+    priority = {}
     xlsm_files = _list_thermal_files(thermal_dir, (".xlsm", ".xlsx"))
     Log.Message(f"[CIT] Indexation de {len(xlsm_files)} fichier(s) .xlsm/.xlsx...")
     for path in xlsm_files:
         file_index = _parse_xlsm_file_to_index(path)
         for key, value in file_index.items():
-            if key not in index:
-                index[key] = value
+            _merge_cit_entry(index, priority, key, value, path)
 
     acceptance_files = [
         p
@@ -412,8 +492,7 @@ def build_cit_index(work_dir: str) -> dict:
         for path in acceptance_files:
             file_index = _parse_acceptance_file_to_index(path)
             for key, value in file_index.items():
-                if key not in index:
-                    index[key] = value
+                _merge_cit_entry(index, priority, key, value, path)
 
     Log.Message(f"[CIT] Index construit: {len(index)} mesure(s) de fin")
     return index
